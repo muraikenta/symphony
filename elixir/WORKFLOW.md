@@ -117,8 +117,8 @@ The agent should be able to talk to Linear, either via a configured Linear MCP s
 - `Human PR Review` -> PR is attached and validated; waiting on human approval.
 - `Merging` -> approved by human; execute the `land` skill flow (do not call `gh pr merge` directly).
 - `Rework` -> reviewer requested changes; planning + implementation required.
-- `Blocked` -> terminal state for the agent; the run hit a real environmental/setup blocker (missing tool, auth, permission, or a config mismatch the agent cannot resolve). The workpad records what is missing and the exact human action needed. Do not modify; the human resolves the blocker and moves the ticket back to `Todo` to retry.
-- `QA` -> terminal state for the agent; PR has merged and the ticket is awaiting human/QA verification. Do not modify.
+- `Blocked` -> normally a terminal state for the agent (the run hit a real environmental/setup blocker; workpad records what is missing and the exact human action needed). When the agent IS dispatched on a `Blocked` issue, it can only be because a fresh comment arrived — switch to **Conversational mode** and answer without changing state.
+- `QA` -> normally a terminal state for the agent (PR has merged, awaiting human/QA verification). When the agent IS dispatched on a `QA` issue, it can only be because a fresh comment arrived — switch to **Conversational mode** and answer without changing state.
 - `Done` -> terminal state; no further action required.
 
 ## Step 0: Determine current ticket state and route
@@ -135,8 +135,8 @@ The agent should be able to talk to Linear, either via a configured Linear MCP s
    - `Human PR Review` -> wait and poll for decision/review updates.
    - `Merging` -> on entry, open and follow `.codex/skills/land/SKILL.md`; do not call `gh pr merge` directly.
    - `Rework` -> run rework flow.
-   - `Blocked` -> do nothing and shut down (terminal for the agent until the human unblocks).
-   - `QA` -> do nothing and shut down (terminal for the agent).
+   - `Blocked` -> if invoked by an external dispatch (fresh comment), run **Conversational mode** (answer only, do not change state). Otherwise do nothing and shut down.
+   - `QA` -> if invoked by an external dispatch (fresh comment), run **Conversational mode** (answer only, do not change state). Otherwise do nothing and shut down.
    - `Done` -> do nothing and shut down.
 4. Check whether a PR already exists for the current branch and whether it is closed.
    - If a branch PR exists and is `CLOSED` or `MERGED`, treat prior branch work as non-reusable for this run.
@@ -285,15 +285,16 @@ For each new actionable comment (skip the agent's own `## Codex Workpad` and aut
 - This step runs once per turn during workpad reconciliation. It must happen before implementation work so the author sees the acknowledgement promptly even if the turn is long-running.
 - For pure question or FYI turns, do not move the issue out of its current state. The agent's job is to answer, not to claim work that wasn't requested.
 
-### Symphony conversational-mode cue
+### Conversational mode (non-`Human PR Review` states)
 
-Symphony's `IssueCommentMonitor` may post a comment with the prefix `🐧 Symphony cue: 会話モード` when a comment lands on a non-`Human PR Review` state (for example `QA`, `Blocked`, or `Done`). Treat this cue as a binding directive:
+When the agent is dispatched on an issue whose current state is in the configured `tracker.conversational_states` set (default `["QA"]`, project workflows commonly add `"Blocked"` and `"Done"`), this is a **conversational turn** triggered by a fresh human comment on either Linear or the linked GitHub PR — never a request for code work:
 
-- Process the referenced source comment as **Question** or **FYI** only — never as Feedback, even if it is phrased as an instruction.
+- Process every actionable new comment (since the prior turn's acknowledgement) as **Question** or **FYI** only, regardless of phrasing. Imperative-shaped sentences in this mode are still answered, not implemented.
 - Skip code changes, branch operations, and pushes for the entire turn.
-- After answering the source comment per the Question rules above, move the issue back to the original state recorded in the cue (e.g., `QA`).
-- Do not re-acknowledge or react to the cue comment itself; it was authored by Symphony, not by a human.
-- If the human truly wants implementation work, they will explicitly move the issue to `Rework` or `Todo`. Wait for that signal — do not infer it from a conversational comment.
+- Answer on the same channel the comment came in on (Linear ↦ Linear reply, GitHub PR ↦ `gh pr comment` / `gh api .../comments/<id>/replies`).
+- Add `✅` to each addressed comment.
+- **Do not change the issue state.** Leave it where it was (e.g., `QA`). The orchestrator will not retry this issue; the next conversational turn happens when a fresh comment arrives.
+- If the human truly wants implementation work, they will explicitly move the issue to `Rework` or `Todo`. Wait for that signal — never infer it from a conversational comment.
 
 ## PR feedback sweep protocol (required)
 

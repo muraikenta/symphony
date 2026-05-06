@@ -48,6 +48,21 @@ defmodule SymphonyElixir.Orchestrator do
     GenServer.start_link(__MODULE__, opts, name: name)
   end
 
+  @doc """
+  Dispatches an agent for a specific issue regardless of its workflow state.
+
+  Used by the comment monitors to spawn an agent on a non-active state
+  issue (e.g., `QA`) when a fresh comment arrives. The agent receives
+  the issue with its current state intact and the workflow prompt
+  decides on conversational vs feedback behavior from there. No-ops
+  if the issue is already running, already on the in-flight retry
+  queue, or recently completed in this orchestrator instance.
+  """
+  @spec request_dispatch(GenServer.name(), Issue.t()) :: :ok
+  def request_dispatch(server \\ __MODULE__, %Issue{} = issue) do
+    GenServer.cast(server, {:external_dispatch_issue, issue})
+  end
+
   @impl true
   def init(_opts) do
     now_ms = System.monotonic_time(:millisecond)
@@ -219,6 +234,50 @@ defmodule SymphonyElixir.Orchestrator do
   def handle_info(msg, state) do
     Logger.debug("Orchestrator ignored message: #{inspect(msg)}")
     {:noreply, state}
+  end
+
+  @impl true
+  def handle_cast({:external_dispatch_issue, %Issue{} = issue}, state) do
+    state = reconcile_running_issues(state)
+
+    cond do
+      Map.has_key?(state.running, issue.id) ->
+        Logger.debug(
+          "Orchestrator skipping external dispatch for #{issue_context(issue)}; already running"
+        )
+
+        {:noreply, state}
+
+      MapSet.member?(state.claimed, issue.id) ->
+        Logger.debug(
+          "Orchestrator skipping external dispatch for #{issue_context(issue)}; already claimed"
+        )
+
+        {:noreply, state}
+
+      Map.has_key?(state.retry_attempts, issue.id) ->
+        Logger.debug(
+          "Orchestrator skipping external dispatch for #{issue_context(issue)}; retry already scheduled"
+        )
+
+        {:noreply, state}
+
+      available_slots(state) <= 0 ->
+        Logger.info(
+          "Orchestrator deferred external dispatch for #{issue_context(issue)}; no agent slots free"
+        )
+
+        {:noreply, state}
+
+      true ->
+        Logger.info(
+          "Orchestrator accepting external dispatch for #{issue_context(issue)} state=#{issue.state || "?"}"
+        )
+
+        new_state = do_dispatch_issue(state, issue, nil, nil)
+        notify_dashboard()
+        {:noreply, new_state}
+    end
   end
 
   defp maybe_dispatch(%State{} = state) do

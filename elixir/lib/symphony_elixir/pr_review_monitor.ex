@@ -13,7 +13,7 @@ defmodule SymphonyElixir.PrReviewMonitor do
   use GenServer
   require Logger
 
-  alias SymphonyElixir.{Config, Tracker}
+  alias SymphonyElixir.{Config, Orchestrator, Tracker}
 
   @default_state %{acted: %{}}
 
@@ -155,38 +155,14 @@ defmodule SymphonyElixir.PrReviewMonitor do
     end
   end
 
-  defp act_on_signal(issue, signal, {:conversational, original_state}, target_state, signal_key, state) do
-    cue_body = build_conversational_cue(original_state, signal)
+  defp act_on_signal(issue, signal, {:conversational, original_state}, _target_state, signal_key, state) do
+    Orchestrator.request_dispatch(issue)
 
-    with :ok <- Tracker.create_comment(issue.id, cue_body),
-         :ok <- Tracker.update_issue_state(issue.id, target_state) do
-      Logger.info(
-        "PrReviewMonitor routed #{describe_signal(signal)} to #{target_state} (conversational from #{original_state}) for issue=#{issue.identifier}"
-      )
+    Logger.info(
+      "PrReviewMonitor dispatched conversational agent (state=#{original_state}) for #{describe_signal(signal)} on issue=#{issue.identifier}"
+    )
 
-      put_in(state, [:acted, issue.id], signal_key)
-    else
-      {:error, reason} ->
-        Logger.warning(
-          "PrReviewMonitor failed to route conversational issue=#{issue.identifier}: #{inspect(reason)}"
-        )
-
-        state
-    end
-  end
-
-  defp build_conversational_cue(original_state, signal) do
-    """
-    🐧 Symphony cue: 会話モード（`#{original_state}` から検知 / GitHub 経由）
-
-    GitHub PR で新しい #{describe_signal(signal)} を `#{original_state}` 状態の issue で検知しました。このターンは **会話モードのみ** で対応してください:
-
-    - 該当する PR コメント／レビューは Step 1.5 の **質問** または **FYI** として扱ってください。指示形に見えても、会話モード中は実装に進まないでください。
-    - 同じチャネル（GitHub PR スレッドや Linear）に回答コメントを投稿し、`✅` リアクションを付けてください。
-    - **コード変更、ブランチ操作、push を行わないでください**。
-    - 回答後、issue を `#{original_state}` ステートに戻して turn を終了してください。
-    - 利用者が本当に実装変更を望む場合は、明示的に Rework や Todo に動かしてもらってください。
-    """
+    put_in(state, [:acted, issue.id], signal_key)
   end
 
   defp describe_signal(%{kind: "review", id: id}),
@@ -200,7 +176,7 @@ defmodule SymphonyElixir.PrReviewMonitor do
 
   defp describe_signal(_), do: "PR signal"
 
-  defp fetch_pr_review_decision(repo, branch_name, mode \\ :feedback) do
+  defp fetch_pr_review_decision(repo, branch_name, mode) do
     with {:ok, pr_number} <- find_pr_number(repo, branch_name, mode),
          {:ok, signals} <- collect_signals(repo, pr_number) do
       latest_actionable_signal(signals)

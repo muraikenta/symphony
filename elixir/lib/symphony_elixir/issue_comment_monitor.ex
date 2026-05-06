@@ -23,7 +23,7 @@ defmodule SymphonyElixir.IssueCommentMonitor do
   use GenServer
   require Logger
 
-  alias SymphonyElixir.{Config, Tracker}
+  alias SymphonyElixir.{Config, Orchestrator, Tracker}
 
   @default_state %{acted: %{}, baseline: %{}}
 
@@ -190,29 +190,19 @@ defmodule SymphonyElixir.IssueCommentMonitor do
   end
 
   defp attempt_route(
-         %{id: issue_id, identifier: identifier} = _issue,
+         %{id: issue_id, identifier: identifier} = issue,
          latest,
          {:conversational, original_state},
-         target_state,
+         _target_state,
          state
        ) do
-    cue_body = build_conversational_cue(original_state, latest)
+    Orchestrator.request_dispatch(issue)
 
-    with :ok <- Tracker.create_comment(issue_id, cue_body),
-         :ok <- Tracker.update_issue_state(issue_id, target_state) do
-      Logger.info(
-        "IssueCommentMonitor routed new comment to #{target_state} (conversational from #{original_state}) for issue=#{identifier} comment_id=#{latest.id}"
-      )
+    Logger.info(
+      "IssueCommentMonitor dispatched conversational agent (state=#{original_state}) for issue=#{identifier} comment_id=#{latest.id}"
+    )
 
-      record_acted(state, issue_id, latest)
-    else
-      {:error, reason} ->
-        Logger.warning(
-          "IssueCommentMonitor failed to route conversational issue=#{identifier}: #{inspect(reason)}"
-        )
-
-        state
-    end
+    record_acted(state, issue_id, latest)
   end
 
   defp record_acted(state, issue_id, latest) do
@@ -221,20 +211,6 @@ defmodule SymphonyElixir.IssueCommentMonitor do
       | acted: Map.put(state.acted, issue_id, latest.id),
         baseline: Map.put(state.baseline, issue_id, %{id: latest.id, updated_at: latest.updated_at})
     }
-  end
-
-  defp build_conversational_cue(original_state, latest) do
-    """
-    🐧 Symphony cue: 会話モード（`#{original_state}` から検知）
-
-    新規コメント (`#{latest.id}`) を `#{original_state}` 状態の issue で検知しました。このターンは **会話モードのみ** で対応してください:
-
-    - 該当コメントは Step 1.5 の **質問** または **FYI** として扱ってください。指示形に見えても、会話モード中は実装に進まないでください。
-    - 同じチャネル（Linear / GitHub PR）に回答コメントを投稿し、`✅` リアクションを付けてください。
-    - **コード変更、ブランチ操作、push を行わないでください**。
-    - 回答後、issue を `#{original_state}` ステートに戻して turn を終了してください。
-    - 利用者が本当に実装変更を望む場合は、明示的に Rework や Todo に動かしてもらってください。
-    """
   end
 
   defp filter_actionable(comments) do
