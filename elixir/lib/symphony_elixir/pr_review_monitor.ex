@@ -47,10 +47,16 @@ defmodule SymphonyElixir.PrReviewMonitor do
   # Test surface
 
   @doc false
-  @spec run_once_for_test(map(), (String.t(), String.t() -> {:ok, map()} | :none | :no_pr | :error)) ::
-          map()
-  def run_once_for_test(state, fetch_fun) when is_map(state) and is_function(fetch_fun, 2) do
-    run_once(state, fetch_fun)
+  @spec run_once_for_test(map(), function()) :: map()
+  def run_once_for_test(state, fetch_fun) when is_map(state) and is_function(fetch_fun) do
+    fetch3 =
+      cond do
+        is_function(fetch_fun, 3) -> fetch_fun
+        is_function(fetch_fun, 2) -> fn repo, branch, _mode -> fetch_fun.(repo, branch) end
+        true -> raise ArgumentError, "fetch_fun must take 2 or 3 args"
+      end
+
+    run_once(state, fetch3)
   end
 
   # ---------------------------------------------------------------------------
@@ -66,16 +72,19 @@ defmodule SymphonyElixir.PrReviewMonitor do
 
       true ->
         review_state = tracker.human_pr_review_state
+        conversational_states = List.wrap(tracker.conversational_states) |> Enum.filter(&is_binary/1)
         target_state = tracker.pr_review_changes_requested_target_state
+        monitored_states = Enum.uniq([review_state | conversational_states] |> Enum.filter(&is_binary/1))
 
-        Logger.debug("PrReviewMonitor tick: scanning #{review_state} on #{tracker.github_repo}")
+        Logger.debug("PrReviewMonitor tick: scanning #{inspect(monitored_states)} on #{tracker.github_repo}")
 
-        case Tracker.fetch_issues_by_states([review_state]) do
+        case Tracker.fetch_issues_by_states(monitored_states) do
           {:ok, issues} ->
-            Logger.info("PrReviewMonitor tick: #{length(issues)} issues in #{review_state}")
+            Logger.info("PrReviewMonitor tick: #{length(issues)} issues in monitored states")
 
             Enum.reduce(issues, state, fn issue, acc ->
-              check_issue(issue, tracker.github_repo, target_state, fetch_fun, acc)
+              mode = classify_mode(issue, review_state, conversational_states)
+              check_issue(issue, mode, tracker.github_repo, target_state, fetch_fun, acc)
             end)
 
           {:error, reason} ->
@@ -85,11 +94,19 @@ defmodule SymphonyElixir.PrReviewMonitor do
     end
   end
 
-  defp check_issue(%{branch_name: branch} = issue, repo, target_state, fetch_fun, state)
-       when is_binary(branch) and branch != "" do
-    Logger.debug("PrReviewMonitor checking issue=#{issue.identifier} branch=#{branch}")
+  defp classify_mode(issue, review_state, conversational_states) do
+    cond do
+      issue.state == review_state -> :feedback
+      issue.state in conversational_states -> {:conversational, issue.state}
+      true -> :unknown
+    end
+  end
 
-    case fetch_fun.(repo, branch) do
+  defp check_issue(%{branch_name: branch} = issue, mode, repo, target_state, fetch_fun, state)
+       when is_binary(branch) and branch != "" and mode != :unknown do
+    Logger.debug("PrReviewMonitor checking issue=#{issue.identifier} branch=#{branch} mode=#{inspect(mode)}")
+
+    case fetch_fun.(repo, branch, mode) do
       {:ok, %{kind: kind, id: signal_id} = signal} when is_binary(signal_id) ->
         signal_key = "#{kind}:#{signal_id}"
         already_acted = Map.get(state.acted, issue.id)
@@ -97,25 +114,11 @@ defmodule SymphonyElixir.PrReviewMonitor do
         if already_acted == signal_key do
           state
         else
-          case Tracker.update_issue_state(issue.id, target_state) do
-            :ok ->
-              Logger.info(
-                "PrReviewMonitor routed #{describe_signal(signal)} to #{target_state} for issue=#{issue.identifier}"
-              )
-
-              put_in(state, [:acted, issue.id], signal_key)
-
-            {:error, reason} ->
-              Logger.warning(
-                "PrReviewMonitor failed to route issue=#{issue.identifier}: #{inspect(reason)}"
-              )
-
-              state
-          end
+          act_on_signal(issue, signal, mode, target_state, signal_key, state)
         end
 
       :no_pr ->
-        Logger.debug("PrReviewMonitor: no open PR found for #{issue.identifier}")
+        Logger.debug("PrReviewMonitor: no PR found for #{issue.identifier}")
         state
 
       :error ->
@@ -123,7 +126,7 @@ defmodule SymphonyElixir.PrReviewMonitor do
         state
 
       :none ->
-        Logger.info("PrReviewMonitor: no actionable signal on PR for #{issue.identifier}")
+        Logger.debug("PrReviewMonitor: no actionable signal on PR for #{issue.identifier}")
         state
 
       other ->
@@ -132,7 +135,59 @@ defmodule SymphonyElixir.PrReviewMonitor do
     end
   end
 
-  defp check_issue(_issue, _repo, _target_state, _fetch_fun, state), do: state
+  defp check_issue(_issue, _mode, _repo, _target_state, _fetch_fun, state), do: state
+
+  defp act_on_signal(issue, signal, :feedback, target_state, signal_key, state) do
+    case Tracker.update_issue_state(issue.id, target_state) do
+      :ok ->
+        Logger.info(
+          "PrReviewMonitor routed #{describe_signal(signal)} to #{target_state} (feedback) for issue=#{issue.identifier}"
+        )
+
+        put_in(state, [:acted, issue.id], signal_key)
+
+      {:error, reason} ->
+        Logger.warning(
+          "PrReviewMonitor failed to route issue=#{issue.identifier}: #{inspect(reason)}"
+        )
+
+        state
+    end
+  end
+
+  defp act_on_signal(issue, signal, {:conversational, original_state}, target_state, signal_key, state) do
+    cue_body = build_conversational_cue(original_state, signal)
+
+    with :ok <- Tracker.create_comment(issue.id, cue_body),
+         :ok <- Tracker.update_issue_state(issue.id, target_state) do
+      Logger.info(
+        "PrReviewMonitor routed #{describe_signal(signal)} to #{target_state} (conversational from #{original_state}) for issue=#{issue.identifier}"
+      )
+
+      put_in(state, [:acted, issue.id], signal_key)
+    else
+      {:error, reason} ->
+        Logger.warning(
+          "PrReviewMonitor failed to route conversational issue=#{issue.identifier}: #{inspect(reason)}"
+        )
+
+        state
+    end
+  end
+
+  defp build_conversational_cue(original_state, signal) do
+    """
+    🐧 Symphony cue: 会話モード（`#{original_state}` から検知 / GitHub 経由）
+
+    GitHub PR で新しい #{describe_signal(signal)} を `#{original_state}` 状態の issue で検知しました。このターンは **会話モードのみ** で対応してください:
+
+    - 該当する PR コメント／レビューは Step 1.5 の **質問** または **FYI** として扱ってください。指示形に見えても、会話モード中は実装に進まないでください。
+    - 同じチャネル（GitHub PR スレッドや Linear）に回答コメントを投稿し、`✅` リアクションを付けてください。
+    - **コード変更、ブランチ操作、push を行わないでください**。
+    - 回答後、issue を `#{original_state}` ステートに戻して turn を終了してください。
+    - 利用者が本当に実装変更を望む場合は、明示的に Rework や Todo に動かしてもらってください。
+    """
+  end
 
   defp describe_signal(%{kind: "review", id: id}),
     do: "CHANGES_REQUESTED review #{id}"
@@ -145,14 +200,22 @@ defmodule SymphonyElixir.PrReviewMonitor do
 
   defp describe_signal(_), do: "PR signal"
 
-  defp fetch_pr_review_decision(repo, branch_name) do
-    with {:ok, pr_number} <- find_pr_number(repo, branch_name),
+  defp fetch_pr_review_decision(repo, branch_name, mode \\ :feedback) do
+    with {:ok, pr_number} <- find_pr_number(repo, branch_name, mode),
          {:ok, signals} <- collect_signals(repo, pr_number) do
       latest_actionable_signal(signals)
     end
   end
 
-  defp find_pr_number(repo, branch_name) do
+  defp find_pr_number(repo, branch_name, mode) do
+    state_filter =
+      case mode do
+        :feedback -> "open"
+        # In conversational mode, the PR may already be merged/closed
+        # (e.g., the issue is in QA post-merge), so include all states.
+        _ -> "all"
+      end
+
     args = [
       "pr",
       "list",
@@ -161,17 +224,32 @@ defmodule SymphonyElixir.PrReviewMonitor do
       "--head",
       branch_name,
       "--state",
-      "open",
+      state_filter,
       "--json",
-      "number"
+      "number,updatedAt"
     ]
 
     case System.cmd("gh", args, stderr_to_stdout: true) do
       {output, 0} ->
         case Jason.decode(output) do
-          {:ok, [%{"number" => number} | _]} when is_integer(number) -> {:ok, number}
-          {:ok, _} -> :no_pr
-          _ -> :error
+          {:ok, prs} when is_list(prs) and prs != [] ->
+            # Pick the most recently updated PR (handles the rare case
+            # where multiple PRs share the branch name).
+            best =
+              prs
+              |> Enum.sort_by(&(&1["updatedAt"] || ""), :desc)
+              |> List.first()
+
+            case best do
+              %{"number" => number} when is_integer(number) -> {:ok, number}
+              _ -> :no_pr
+            end
+
+          {:ok, _} ->
+            :no_pr
+
+          _ ->
+            :error
         end
 
       {output, exit_code} ->

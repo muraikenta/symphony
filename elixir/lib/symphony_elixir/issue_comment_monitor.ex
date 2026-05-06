@@ -238,11 +238,12 @@ defmodule SymphonyElixir.IssueCommentMonitor do
   end
 
   defp filter_actionable(comments) do
+    # Top-level comments AND thread replies both qualify as triggers; only
+    # the agent's own workpad/cue and known bot summaries are excluded.
     comments
     |> Enum.reject(&workpad?/1)
     |> Enum.reject(&symphony_cue?/1)
     |> Enum.reject(&bot_summary?/1)
-    |> Enum.reject(&thread_reply?/1)
   end
 
   defp workpad?(%{body: body}) when is_binary(body), do: String.starts_with?(body, @workpad_marker)
@@ -256,9 +257,6 @@ defmodule SymphonyElixir.IssueCommentMonitor do
   end
 
   defp bot_summary?(_), do: false
-
-  defp thread_reply?(%{parent_id: parent_id}) when is_binary(parent_id) and parent_id != "", do: true
-  defp thread_reply?(_), do: false
 
   defp latest_comment([]), do: nil
 

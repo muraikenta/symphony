@@ -125,7 +125,7 @@ defmodule SymphonyElixir.IssueCommentMonitorTest do
     refute_received {:memory_tracker_state_update, "issue-1", _}
   end
 
-  test "skips threaded replies" do
+  test "treats threaded replies as actionable triggers" do
     setup_memory_tracker([human_pr_review_issue()], %{
       "issue-1" => [
         comment(%{id: "c-old", updated_at: ~U[2026-05-06 09:00:00Z]}),
@@ -143,8 +143,9 @@ defmodule SymphonyElixir.IssueCommentMonitorTest do
       baseline: %{"issue-1" => %{id: "c-old", updated_at: ~U[2026-05-06 09:00:00Z]}}
     }
 
-    _ = IssueCommentMonitor.run_once_for_test(initial_state)
-    refute_received {:memory_tracker_state_update, "issue-1", _}
+    new_state = IssueCommentMonitor.run_once_for_test(initial_state)
+    assert_received {:memory_tracker_state_update, "issue-1", "Todo"}
+    assert new_state.acted["issue-1"] == "c-reply"
   end
 
   test "routes a QA-state comment via conversational cue + Todo move" do
