@@ -14,6 +14,7 @@ tracker:
     - Cancelled
     - Canceled
     - Duplicate
+    - Blocked
     - QA
     - Done
 polling:
@@ -116,6 +117,7 @@ The agent should be able to talk to Linear, either via a configured Linear MCP s
 - `Human PR Review` -> PR is attached and validated; waiting on human approval.
 - `Merging` -> approved by human; execute the `land` skill flow (do not call `gh pr merge` directly).
 - `Rework` -> reviewer requested changes; planning + implementation required.
+- `Blocked` -> terminal state for the agent; the run hit a real environmental/setup blocker (missing tool, auth, permission, or a config mismatch the agent cannot resolve). The workpad records what is missing and the exact human action needed. Do not modify; the human resolves the blocker and moves the ticket back to `Todo` to retry.
 - `QA` -> terminal state for the agent; PR has merged and the ticket is awaiting human/QA verification. Do not modify.
 - `Done` -> terminal state; no further action required.
 
@@ -133,6 +135,7 @@ The agent should be able to talk to Linear, either via a configured Linear MCP s
    - `Human PR Review` -> wait and poll for decision/review updates.
    - `Merging` -> on entry, open and follow `.codex/skills/land/SKILL.md`; do not call `gh pr merge` directly.
    - `Rework` -> run rework flow.
+   - `Blocked` -> do nothing and shut down (terminal for the agent until the human unblocks).
    - `QA` -> do nothing and shut down (terminal for the agent).
    - `Done` -> do nothing and shut down.
 4. Check whether a PR already exists for the current branch and whether it is closed.
@@ -248,12 +251,13 @@ When a ticket has an attached PR, run this protocol before moving to `Human PR R
 Use this only when completion is blocked by missing required tools or missing auth/permissions that cannot be resolved in-session.
 
 - GitHub is **not** a valid blocker by default. Always try fallback strategies first (alternate remote/auth mode, then continue publish/review flow).
-- Do not move to `Human PR Review` for GitHub access/auth until all fallback strategies have been attempted and documented in the workpad.
-- If a non-GitHub required tool is missing, or required non-GitHub auth is unavailable, move the ticket to `Human PR Review` with a short blocker brief in the workpad that includes:
-  - what is missing,
+- Do not move to `Blocked` for GitHub access/auth until all fallback strategies have been attempted and documented in the workpad.
+- If a non-GitHub required tool is missing, required non-GitHub auth is unavailable, or a sandbox/permission constraint prevents required write operations, move the ticket to `Blocked` with a short blocker brief in the workpad that includes:
+  - what is missing or constrained,
   - why it blocks required acceptance/validation,
   - exact human action needed to unblock.
 - Keep the brief concise and action-oriented; do not add extra top-level comments outside the workpad.
+- Do not route environmental blockers to `Human PR Review`; that state is reserved for human approval of an attached PR.
 
 ## Step 2: Execution phase (Todo -> In Progress -> Human PR Review)
 
@@ -294,7 +298,7 @@ Use this only when completion is blocked by missing required tools or missing au
     - Repeat this check-address-verify loop until no outstanding comments remain and checks are fully passing.
     - Re-open and refresh the workpad before state transition so `Plan`, `Acceptance Criteria`, and `Validation` exactly match completed work.
 12. Only then move issue to `Human PR Review`.
-    - Exception: if blocked by missing required non-GitHub tools/auth per the blocked-access escape hatch, move to `Human PR Review` with the blocker brief and explicit unblock actions.
+    - Exception: if blocked by missing required non-GitHub tools/auth or a sandbox/permission constraint per the blocked-access escape hatch, move to `Blocked` (not `Human PR Review`) with the blocker brief and explicit unblock actions.
 13. For `Todo` tickets that already had a PR attached at kickoff:
     - Ensure all existing PR feedback was reviewed and resolved, including inline review comments (code changes or explicit, justified pushback response).
     - Ensure branch was pushed with any required updates.
@@ -347,7 +351,7 @@ Use this only when completion is blocked by missing required tools or missing au
   current issue.
 - Do not move to `Human PR Review` unless the `Completion bar before Human PR Review` is satisfied.
 - In `Human PR Review`, do not make changes; wait and poll.
-- If state is terminal (`QA`, `Done`, or any other configured terminal state), do nothing and shut down.
+- If state is terminal (`Blocked`, `QA`, `Done`, or any other configured terminal state), do nothing and shut down.
 - Keep issue text concise, specific, and reviewer-oriented.
 - If blocked and no workpad exists yet, add one blocker comment describing blocker, impact, and next unblock action.
 

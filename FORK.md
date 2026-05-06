@@ -27,6 +27,7 @@
 
 - マージ完了後の遷移先を `Done` → `QA` に変更（QA チームが検証して `Done` へ手動遷移する運用）
 - `terminal_states` に `QA` 追加（エージェントは触らない）
+- 環境/権限不足でエージェントが詰まった時の専用ステート `Blocked` を追加。`Human PR Review`（PR レビュー待ち）と意味が混ざらないよう分離。`Blocked` も `terminal_states` に含める（人間が原因解決して `Todo` に戻すと再開）
 
 ## テスト安定化
 
@@ -37,9 +38,9 @@
 
 - team: `GIKAI`、拾うラベル: `ai-task`
 - active states: `Todo`, `In Progress`, `Merging`, `Rework`
-- terminal states: `Closed`, `Cancelled`, `Canceled`, `Duplicate`, `QA`, `Done`
+- terminal states: `Closed`, `Cancelled`, `Canceled`, `Duplicate`, `Blocked`, `QA`, `Done`
 
 ## 必要な Linear 側セットアップ
 
-- ステート追加: `Human Spec Review`、`Human PR Review`（既存 `Human Review` をリネーム）、`QA`
+- ステート追加: `Human Spec Review`、`Human PR Review`（既存 `Human Review` をリネーム）、`Blocked`、`QA`
 - ラベル: `ai-task`（または WORKFLOW.md の `required_labels` で指定した名前）
