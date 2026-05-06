@@ -125,8 +125,10 @@ defmodule SymphonyElixir.Config do
       settings.tracker.kind == "linear" and not is_binary(settings.tracker.api_key) ->
         {:error, :missing_linear_api_token}
 
-      settings.tracker.kind == "linear" and not is_binary(settings.tracker.project_slug) ->
-        {:error, :missing_linear_project_slug}
+      settings.tracker.kind == "linear" and
+        not is_binary(settings.tracker.project_slug) and
+          not is_binary(settings.tracker.team_key) ->
+        {:error, :missing_linear_scope}
 
       true ->
         :ok
