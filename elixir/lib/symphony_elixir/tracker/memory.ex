@@ -52,6 +52,12 @@ defmodule SymphonyElixir.Tracker.Memory do
     {:ok, Map.get(configured_comments(), issue_id, [])}
   end
 
+  @spec create_comment_reaction(String.t(), String.t()) :: :ok | {:error, term()}
+  def create_comment_reaction(comment_id, emoji) do
+    send_event({:memory_tracker_comment_reaction, comment_id, emoji})
+    :ok
+  end
+
   defp configured_issues do
     Application.get_env(:symphony_elixir, :memory_tracker_issues, [])
   end

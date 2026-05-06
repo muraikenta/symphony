@@ -235,6 +235,10 @@ Once the human approves by editing the description (if needed) and moving the is
 
 Whenever workpad reconciliation picks up a human comment that was not present in the prior turn, classify it and respond on the source channel so the author can see their input was processed.
 
+### Reactions
+
+Symphony's monitors automatically add a single `👀` reaction to every comment they detect, **before** they dispatch the agent. The reaction is the visible "I see this comment, the agent is on it" signal — agents do **not** add their own reactions on top. Drop the previous `✅` / `🤔` reaction conventions; if you find yourself reaching for them, just leave a substantive reply or update the workpad instead.
+
 ### Classification
 
 For each new actionable comment (skip the agent's own `## Codex Workpad` and automated bot summaries like `みらいいぬ自動調査` / `coderabbitai`), tag it as one of:
@@ -253,28 +257,24 @@ For each new actionable comment (skip the agent's own `## Codex Workpad` and aut
    - Linear comment → reply via Linear MCP `commentCreate` with `parentId` pointing at the question's comment id (or top-level if the host doesn't expose a thread). Do **not** edit the workpad to hold the answer.
    - GitHub PR top-level comment → `gh pr comment <pr> --body "..."`.
    - GitHub PR inline review comment → `gh api repos/<owner>/<repo>/pulls/<pr>/comments/<comment_id>/replies -f body=...` to keep the thread intact.
-3. Add a `✅` reaction to the question comment (answered).
-4. Append a one-line entry to the workpad `Notes` ("Answered question on Linear comment <id>: <one-line summary>") so future turns have provenance.
-5. **Do not produce code changes, branch updates, or pushes** purely to address the question. End the turn after answering and leave the issue in its current state (return to `Human PR Review` if a PR is already attached, otherwise the prior state).
+3. Append a one-line entry to the workpad `Notes` ("Answered question on Linear comment <id>: <one-line summary>") so future turns have provenance.
+4. **Do not produce code changes, branch updates, or pushes** purely to address the question. End the turn after answering and leave the issue in its current state (return to `Human PR Review` if a PR is already attached, otherwise the prior state).
 
 **Information / FYI**:
 
-1. Add a `👀` reaction (read and noted).
-2. Append a one-line entry to the workpad `Notes` capturing the information.
-3. No reply, no code change, no state move (return to the prior state).
+1. Append a one-line entry to the workpad `Notes` capturing the information.
+2. No reply, no code change, no state move (return to the prior state).
 
 **Feedback / instruction**:
 
 1. Update the workpad Plan / Acceptance Criteria / Validation to reflect the new direction.
-2. Add a `✅` reaction (incorporated into plan).
-3. Optionally post a short threaded reply when there is nuance the author should know (partial application, explicit deferral with reason, confirmation request).
-4. Proceed with the normal execution / PR feedback sweep flow to land the change.
+2. Optionally post a short threaded reply when there is nuance the author should know (partial application, explicit deferral with reason, confirmation request).
+3. Proceed with the normal execution / PR feedback sweep flow to land the change.
 
 **Mixed**:
 
-- Answer the question portion via the Question response above (reply + ✅).
+- Answer the question portion via the Question response above (reply).
 - Apply the feedback portion via the Feedback response above (workpad update + execution).
-- One `✅` reaction is enough — it covers both halves.
 
 ### Identifying agent-authored replies
 

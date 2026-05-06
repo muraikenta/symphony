@@ -37,6 +37,14 @@ defmodule SymphonyElixir.Linear.Adapter do
   }
   """
 
+  @comment_reaction_mutation """
+  mutation SymphonyReactToComment($commentId: String!, $emoji: String!) {
+    reactionCreate(input: {commentId: $commentId, emoji: $emoji}) {
+      success
+    }
+  }
+  """
+
   @spec fetch_candidate_issues() :: {:ok, [term()]} | {:error, term()}
   def fetch_candidate_issues, do: client_module().fetch_candidate_issues()
 
@@ -59,6 +67,23 @@ defmodule SymphonyElixir.Linear.Adapter do
       false -> {:error, :comment_create_failed}
       {:error, reason} -> {:error, reason}
       _ -> {:error, :comment_create_failed}
+    end
+  end
+
+  @spec create_comment_reaction(String.t(), String.t()) :: :ok | {:error, term()}
+  def create_comment_reaction(comment_id, emoji)
+      when is_binary(comment_id) and is_binary(emoji) do
+    with {:ok, response} <-
+           client_module().graphql(@comment_reaction_mutation, %{
+             commentId: comment_id,
+             emoji: emoji
+           }),
+         true <- get_in(response, ["data", "reactionCreate", "success"]) == true do
+      :ok
+    else
+      false -> {:error, :reaction_create_failed}
+      {:error, reason} -> {:error, reason}
+      _ -> {:error, :reaction_create_failed}
     end
   end
 

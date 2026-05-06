@@ -138,6 +138,8 @@ defmodule SymphonyElixir.PrReviewMonitor do
   defp check_issue(_issue, _mode, _repo, _target_state, _fetch_fun, state), do: state
 
   defp act_on_signal(issue, signal, :feedback, target_state, signal_key, state) do
+    react_seen_github(signal)
+
     case Tracker.update_issue_state(issue.id, target_state) do
       :ok ->
         Logger.info(
@@ -156,6 +158,7 @@ defmodule SymphonyElixir.PrReviewMonitor do
   end
 
   defp act_on_signal(issue, signal, {:conversational, original_state}, _target_state, signal_key, state) do
+    react_seen_github(signal)
     Orchestrator.request_dispatch(issue)
 
     Logger.info(
@@ -164,6 +167,34 @@ defmodule SymphonyElixir.PrReviewMonitor do
 
     put_in(state, [:acted, issue.id], signal_key)
   end
+
+  defp react_seen_github(%{kind: kind, id: id, repo: repo})
+       when is_binary(id) and is_binary(repo) do
+    endpoint =
+      case kind do
+        "issue_comment" -> "repos/#{repo}/issues/comments/#{id}/reactions"
+        "review_comment" -> "repos/#{repo}/pulls/comments/#{id}/reactions"
+        _ -> nil
+      end
+
+    if endpoint do
+      case System.cmd("gh", ["api", endpoint, "-f", "content=eyes"], stderr_to_stdout: true) do
+        {_output, 0} ->
+          :ok
+
+        {output, exit_code} ->
+          Logger.debug(
+            "PrReviewMonitor failed to add 👀 reaction (exit=#{exit_code}): #{String.slice(output, 0, 200)}"
+          )
+
+          :ok
+      end
+    else
+      :ok
+    end
+  end
+
+  defp react_seen_github(_), do: :ok
 
   defp describe_signal(%{kind: "review", id: id}),
     do: "CHANGES_REQUESTED review #{id}"
@@ -238,10 +269,12 @@ defmodule SymphonyElixir.PrReviewMonitor do
     with {:ok, reviews} <- fetch_reviews(repo, pr_number),
          {:ok, issue_comments} <- fetch_issue_comments(repo, pr_number),
          {:ok, review_comments} <- fetch_review_comments(repo, pr_number) do
-      {:ok,
-       Enum.flat_map(reviews, &normalize_review/1) ++
-         Enum.flat_map(issue_comments, &normalize_issue_comment/1) ++
-         Enum.flat_map(review_comments, &normalize_review_comment/1)}
+      tagged =
+        Enum.flat_map(reviews, &normalize_review/1) ++
+          Enum.flat_map(issue_comments, &normalize_issue_comment/1) ++
+          Enum.flat_map(review_comments, &normalize_review_comment/1)
+
+      {:ok, Enum.map(tagged, &Map.put(&1, :repo, repo))}
     end
   end
 

@@ -191,6 +191,8 @@ defmodule SymphonyElixir.IssueCommentMonitor do
   defp baseline_covers?(_baseline, _latest), do: false
 
   defp attempt_route(%{id: issue_id, identifier: identifier} = _issue, latest, :feedback, target_state, state) do
+    react_seen(latest)
+
     case Tracker.update_issue_state(issue_id, target_state) do
       :ok ->
         Logger.info(
@@ -215,6 +217,7 @@ defmodule SymphonyElixir.IssueCommentMonitor do
          _target_state,
          state
        ) do
+    react_seen(latest)
     Orchestrator.request_dispatch(issue)
 
     Logger.info(
@@ -223,6 +226,22 @@ defmodule SymphonyElixir.IssueCommentMonitor do
 
     record_acted(state, issue_id, latest)
   end
+
+  defp react_seen(%{id: comment_id}) when is_binary(comment_id) do
+    case Tracker.create_comment_reaction(comment_id, "👀") do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        Logger.debug(
+          "IssueCommentMonitor failed to add 👀 reaction to comment=#{comment_id}: #{inspect(reason)}"
+        )
+
+        :ok
+    end
+  end
+
+  defp react_seen(_), do: :ok
 
   defp record_acted(state, issue_id, latest) do
     %{

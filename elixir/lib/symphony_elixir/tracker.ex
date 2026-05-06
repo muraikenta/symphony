@@ -10,6 +10,7 @@ defmodule SymphonyElixir.Tracker do
   @callback fetch_issue_states_by_ids([String.t()]) :: {:ok, [term()]} | {:error, term()}
   @callback fetch_issue_comments(String.t()) :: {:ok, [map()]} | {:error, term()}
   @callback create_comment(String.t(), String.t()) :: :ok | {:error, term()}
+  @callback create_comment_reaction(String.t(), String.t()) :: :ok | {:error, term()}
   @callback update_issue_state(String.t(), String.t()) :: :ok | {:error, term()}
 
   @spec fetch_candidate_issues() :: {:ok, [term()]} | {:error, term()}
@@ -40,6 +41,11 @@ defmodule SymphonyElixir.Tracker do
   @spec fetch_issue_comments(String.t()) :: {:ok, [map()]} | {:error, term()}
   def fetch_issue_comments(issue_id) do
     adapter().fetch_issue_comments(issue_id)
+  end
+
+  @spec create_comment_reaction(String.t(), String.t()) :: :ok | {:error, term()}
+  def create_comment_reaction(comment_id, emoji) do
+    adapter().create_comment_reaction(comment_id, emoji)
   end
 
   @spec adapter() :: module()
