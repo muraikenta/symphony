@@ -196,6 +196,16 @@ defmodule SymphonyElixir.CoreTest do
     assert {:error, :workflow_front_matter_not_a_map} = Workflow.load(workflow_path)
   end
 
+  test "workflow load preserves UTF-8 multi-byte characters whose continuation bytes overlap unicode line break code points" do
+    workflow_path = Path.join(Path.dirname(Workflow.workflow_file_path()), "UTF8_MULTI_BYTE_WORKFLOW.md")
+    body = "あなたは Linear チケットの作業を担当します。"
+    File.write!(workflow_path, "---\ntracker:\n  kind: linear\n---\n#{body}\n")
+
+    assert {:ok, %{prompt: prompt}} = Workflow.load(workflow_path)
+    assert String.valid?(prompt)
+    assert prompt == body
+  end
+
   test "SymphonyElixir.start_link delegates to the orchestrator" do
     write_workflow_file!(Workflow.workflow_file_path(), tracker_kind: "memory")
     Application.put_env(:symphony_elixir, :memory_tracker_issues, [])
