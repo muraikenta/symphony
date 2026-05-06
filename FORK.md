@@ -30,6 +30,7 @@
   - `SYMPHONY_WORKSPACE_DIR` — 現在のワークスペース絶対パス
   - `SYMPHONY_ISSUE_IDENTIFIER` — Linear チケット識別子
   - 用途例: 個人ローカルパスをハードコードせず、`"$SYMPHONY_WORKFLOW_DIR/.."` から secrets ファイル（`.env` 等）をコピーする after_create フック。SSH worker 経由でも同じ env vars が prelude として転送される
+- **PR `Request changes` を受けたら自動で Todo に戻す PrReviewMonitor**: `tracker.github_repo` が設定されている場合、専用 GenServer が定期的（デフォルト 30 秒）に `Human PR Review` ステートのチケットを走査し、`gh pr view` で `reviewDecision == CHANGES_REQUESTED` を確認。新しい CHANGES_REQUESTED review が見つかったらチケットを `Todo`（`tracker.pr_review_changes_requested_target_state` で変更可）に自動遷移し、Symphony の通常フローで PR フィードバックスイープが起動する。重複アクションは review id の in-memory map で抑止
 
 ## ステート遷移
 

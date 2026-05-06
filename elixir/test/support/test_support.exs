@@ -99,6 +99,10 @@ defmodule SymphonyElixir.TestSupport do
           tracker_team_key: nil,
           tracker_assignee: nil,
           tracker_required_labels: nil,
+          tracker_github_repo: nil,
+          tracker_human_pr_review_state: nil,
+          tracker_pr_review_changes_requested_target_state: nil,
+          tracker_pr_review_polling_interval_ms: nil,
           tracker_active_states: ["Todo", "In Progress"],
           tracker_terminal_states: ["Closed", "Cancelled", "Canceled", "Duplicate", "Done"],
           poll_interval_ms: 30_000,
@@ -138,6 +142,11 @@ defmodule SymphonyElixir.TestSupport do
     tracker_team_key = Keyword.get(config, :tracker_team_key)
     tracker_assignee = Keyword.get(config, :tracker_assignee)
     tracker_required_labels = Keyword.get(config, :tracker_required_labels)
+    tracker_github_repo = Keyword.get(config, :tracker_github_repo)
+    tracker_human_pr_review_state = Keyword.get(config, :tracker_human_pr_review_state)
+    tracker_pr_review_changes_requested_target_state =
+      Keyword.get(config, :tracker_pr_review_changes_requested_target_state)
+    tracker_pr_review_polling_interval_ms = Keyword.get(config, :tracker_pr_review_polling_interval_ms)
     tracker_active_states = Keyword.get(config, :tracker_active_states)
     tracker_terminal_states = Keyword.get(config, :tracker_terminal_states)
     poll_interval_ms = Keyword.get(config, :poll_interval_ms)
@@ -178,6 +187,10 @@ defmodule SymphonyElixir.TestSupport do
         "  team_key: #{yaml_value(tracker_team_key)}",
         "  assignee: #{yaml_value(tracker_assignee)}",
         "  required_labels: #{yaml_value(tracker_required_labels)}",
+        "  github_repo: #{yaml_value(tracker_github_repo)}",
+        "  human_pr_review_state: #{yaml_value(tracker_human_pr_review_state)}",
+        "  pr_review_changes_requested_target_state: #{yaml_value(tracker_pr_review_changes_requested_target_state)}",
+        "  pr_review_polling_interval_ms: #{yaml_value(tracker_pr_review_polling_interval_ms)}",
         "  active_states: #{yaml_value(tracker_active_states)}",
         "  terminal_states: #{yaml_value(tracker_terminal_states)}",
         "polling:",

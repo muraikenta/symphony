@@ -52,6 +52,10 @@ defmodule SymphonyElixir.Config.Schema do
       field(:team_key, :string)
       field(:assignee, :string)
       field(:required_labels, {:array, :string}, default: [])
+      field(:github_repo, :string)
+      field(:human_pr_review_state, :string, default: "Human PR Review")
+      field(:pr_review_changes_requested_target_state, :string, default: "Todo")
+      field(:pr_review_polling_interval_ms, :integer, default: 30_000)
       field(:active_states, {:array, :string}, default: ["Todo", "In Progress"])
       field(:terminal_states, {:array, :string}, default: ["Closed", "Cancelled", "Canceled", "Duplicate", "Done"])
     end
@@ -61,9 +65,24 @@ defmodule SymphonyElixir.Config.Schema do
       schema
       |> cast(
         attrs,
-        [:kind, :endpoint, :api_key, :project_slug, :team_key, :assignee, :required_labels, :active_states, :terminal_states],
+        [
+          :kind,
+          :endpoint,
+          :api_key,
+          :project_slug,
+          :team_key,
+          :assignee,
+          :required_labels,
+          :github_repo,
+          :human_pr_review_state,
+          :pr_review_changes_requested_target_state,
+          :pr_review_polling_interval_ms,
+          :active_states,
+          :terminal_states
+        ],
         empty_values: []
       )
+      |> validate_number(:pr_review_polling_interval_ms, greater_than: 0)
     end
   end
 
