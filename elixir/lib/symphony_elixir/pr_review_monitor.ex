@@ -47,7 +47,7 @@ defmodule SymphonyElixir.PrReviewMonitor do
   # Test surface
 
   @doc false
-  @spec run_once_for_test(map(), (String.t(), String.t() -> {:ok, map()} | :no_pr | :error)) ::
+  @spec run_once_for_test(map(), (String.t(), String.t() -> {:ok, map()} | :none | :no_pr | :error)) ::
           map()
   def run_once_for_test(state, fetch_fun) when is_map(state) and is_function(fetch_fun, 2) do
     run_once(state, fetch_fun)
@@ -83,30 +83,28 @@ defmodule SymphonyElixir.PrReviewMonitor do
   defp check_issue(%{branch_name: branch} = issue, repo, target_state, fetch_fun, state)
        when is_binary(branch) and branch != "" do
     case fetch_fun.(repo, branch) do
-      {:ok, %{state: "CHANGES_REQUESTED", review_id: review_id}}
-      when is_binary(review_id) ->
+      {:ok, %{kind: kind, id: signal_id} = signal} when is_binary(signal_id) ->
+        signal_key = "#{kind}:#{signal_id}"
         already_acted = Map.get(state.acted, issue.id)
 
-        cond do
-          already_acted == review_id ->
-            state
+        if already_acted == signal_key do
+          state
+        else
+          case Tracker.update_issue_state(issue.id, target_state) do
+            :ok ->
+              Logger.info(
+                "PrReviewMonitor routed #{describe_signal(signal)} to #{target_state} for issue=#{issue.identifier}"
+              )
 
-          true ->
-            case Tracker.update_issue_state(issue.id, target_state) do
-              :ok ->
-                Logger.info(
-                  "PrReviewMonitor routed CHANGES_REQUESTED PR to #{target_state} for issue=#{issue.identifier} review_id=#{review_id}"
-                )
+              put_in(state, [:acted, issue.id], signal_key)
 
-                put_in(state, [:acted, issue.id], review_id)
+            {:error, reason} ->
+              Logger.warning(
+                "PrReviewMonitor failed to route issue=#{issue.identifier}: #{inspect(reason)}"
+              )
 
-              {:error, reason} ->
-                Logger.warning(
-                  "PrReviewMonitor failed to route issue=#{issue.identifier}: #{inspect(reason)}"
-                )
-
-                state
-            end
+              state
+          end
         end
 
       _ ->
@@ -116,10 +114,21 @@ defmodule SymphonyElixir.PrReviewMonitor do
 
   defp check_issue(_issue, _repo, _target_state, _fetch_fun, state), do: state
 
+  defp describe_signal(%{kind: "review", id: id}),
+    do: "CHANGES_REQUESTED review #{id}"
+
+  defp describe_signal(%{kind: "issue_comment", id: id, author: author}),
+    do: "PR comment #{id} by #{author}"
+
+  defp describe_signal(%{kind: "review_comment", id: id, author: author}),
+    do: "inline PR comment #{id} by #{author}"
+
+  defp describe_signal(_), do: "PR signal"
+
   defp fetch_pr_review_decision(repo, branch_name) do
     with {:ok, pr_number} <- find_pr_number(repo, branch_name),
-         {:ok, payload} <- pr_view_json(repo, pr_number) do
-      decode_review_decision(payload)
+         {:ok, signals} <- collect_signals(repo, pr_number) do
+      latest_actionable_signal(signals)
     end
   end
 
@@ -150,42 +159,104 @@ defmodule SymphonyElixir.PrReviewMonitor do
     end
   end
 
-  defp pr_view_json(repo, pr_number) do
-    args = [
-      "pr",
-      "view",
-      to_string(pr_number),
-      "--repo",
-      repo,
-      "--json",
-      "reviewDecision,reviews"
-    ]
+  defp collect_signals(repo, pr_number) do
+    with {:ok, reviews} <- fetch_reviews(repo, pr_number),
+         {:ok, issue_comments} <- fetch_issue_comments(repo, pr_number),
+         {:ok, review_comments} <- fetch_review_comments(repo, pr_number) do
+      {:ok,
+       Enum.flat_map(reviews, &normalize_review/1) ++
+         Enum.flat_map(issue_comments, &normalize_issue_comment/1) ++
+         Enum.flat_map(review_comments, &normalize_review_comment/1)}
+    end
+  end
 
-    case System.cmd("gh", args, stderr_to_stdout: true) do
+  defp fetch_reviews(repo, pr_number) do
+    case System.cmd(
+           "gh",
+           ["api", "repos/#{repo}/pulls/#{pr_number}/reviews", "--paginate"],
+           stderr_to_stdout: true
+         ) do
       {output, 0} -> Jason.decode(output)
       _ -> :error
     end
   end
 
-  defp decode_review_decision({:ok, payload}), do: decode_review_decision(payload)
-
-  defp decode_review_decision(%{"reviewDecision" => "CHANGES_REQUESTED", "reviews" => reviews})
-       when is_list(reviews) do
-    case latest_changes_requested_review(reviews) do
-      %{"id" => id} when is_binary(id) -> {:ok, %{state: "CHANGES_REQUESTED", review_id: id}}
-      %{"id" => id} when is_integer(id) -> {:ok, %{state: "CHANGES_REQUESTED", review_id: to_string(id)}}
-      _ -> :none
+  defp fetch_issue_comments(repo, pr_number) do
+    # Top-level PR comments (the conversation tab) live at /issues/<n>/comments.
+    case System.cmd(
+           "gh",
+           ["api", "repos/#{repo}/issues/#{pr_number}/comments", "--paginate"],
+           stderr_to_stdout: true
+         ) do
+      {output, 0} -> Jason.decode(output)
+      _ -> :error
     end
   end
 
-  defp decode_review_decision(%{}), do: :none
-  defp decode_review_decision(_), do: :error
+  defp fetch_review_comments(repo, pr_number) do
+    # Inline review comments live at /pulls/<n>/comments.
+    case System.cmd(
+           "gh",
+           ["api", "repos/#{repo}/pulls/#{pr_number}/comments", "--paginate"],
+           stderr_to_stdout: true
+         ) do
+      {output, 0} -> Jason.decode(output)
+      _ -> :error
+    end
+  end
 
-  defp latest_changes_requested_review(reviews) do
-    reviews
-    |> Enum.filter(&(&1["state"] == "CHANGES_REQUESTED"))
-    |> Enum.sort_by(&(&1["submittedAt"] || ""), :desc)
-    |> List.first()
+  defp normalize_review(%{"state" => "CHANGES_REQUESTED"} = review) do
+    author = get_in(review, ["user", "login"]) || ""
+    id = id_to_string(review["id"])
+    submitted_at = review["submitted_at"] || review["submittedAt"]
+
+    if id && not bot?(author) do
+      [%{kind: "review", id: id, author: author, timestamp: submitted_at}]
+    else
+      []
+    end
+  end
+
+  defp normalize_review(_), do: []
+
+  defp normalize_issue_comment(comment) do
+    author = get_in(comment, ["user", "login"]) || ""
+    id = id_to_string(comment["id"])
+    created_at = comment["created_at"] || comment["createdAt"]
+
+    if id && not bot?(author) do
+      [%{kind: "issue_comment", id: id, author: author, timestamp: created_at}]
+    else
+      []
+    end
+  end
+
+  defp normalize_review_comment(comment) do
+    author = get_in(comment, ["user", "login"]) || ""
+    id = id_to_string(comment["id"])
+    created_at = comment["created_at"] || comment["createdAt"]
+
+    if id && not bot?(author) do
+      [%{kind: "review_comment", id: id, author: author, timestamp: created_at}]
+    else
+      []
+    end
+  end
+
+  defp id_to_string(id) when is_integer(id), do: Integer.to_string(id)
+  defp id_to_string(id) when is_binary(id) and id != "", do: id
+  defp id_to_string(_), do: nil
+
+  defp bot?(login) when is_binary(login), do: String.ends_with?(login, "[bot]")
+  defp bot?(_), do: true
+
+  defp latest_actionable_signal([]), do: :none
+
+  defp latest_actionable_signal(signals) do
+    case Enum.max_by(signals, &(&1.timestamp || ""), fn -> nil end) do
+      nil -> :none
+      signal -> {:ok, signal}
+    end
   end
 
   defp schedule_check(interval_ms) do

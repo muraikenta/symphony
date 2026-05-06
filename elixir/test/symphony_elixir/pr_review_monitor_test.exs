@@ -53,12 +53,24 @@ defmodule SymphonyElixir.PrReviewMonitorTest do
     setup_memory_tracker([human_pr_review_issue()])
 
     fetch_fun = fn "team-mirai/mirai-gikai", "feature/gikai-298" ->
-      {:ok, %{state: "CHANGES_REQUESTED", review_id: "rev-100"}}
+      {:ok, %{kind: "review", id: "rev-100", author: "alice", timestamp: "2026-05-06T10:00:00Z"}}
     end
 
     new_state = PrReviewMonitor.run_once_for_test(%{acted: %{}}, fetch_fun)
-    assert new_state.acted == %{"issue-1" => "rev-100"}
+    assert new_state.acted == %{"issue-1" => "review:rev-100"}
 
+    assert_received {:memory_tracker_state_update, "issue-1", "Todo"}
+  end
+
+  test "moves issue to Todo on fresh top-level PR comment" do
+    setup_memory_tracker([human_pr_review_issue()])
+
+    fetch_fun = fn _repo, _branch ->
+      {:ok, %{kind: "issue_comment", id: "c-42", author: "alice", timestamp: "2026-05-06T10:00:00Z"}}
+    end
+
+    new_state = PrReviewMonitor.run_once_for_test(%{acted: %{}}, fetch_fun)
+    assert new_state.acted == %{"issue-1" => "issue_comment:c-42"}
     assert_received {:memory_tracker_state_update, "issue-1", "Todo"}
   end
 
@@ -78,18 +90,18 @@ defmodule SymphonyElixir.PrReviewMonitorTest do
     end)
 
     fetch_fun = fn _repo, _branch ->
-      {:ok, %{state: "CHANGES_REQUESTED", review_id: "rev-1"}}
+      {:ok, %{kind: "review", id: "rev-1", author: "alice", timestamp: "2026-05-06T10:00:00Z"}}
     end
 
     PrReviewMonitor.run_once_for_test(%{acted: %{}}, fetch_fun)
     assert_received {:memory_tracker_state_update, "issue-1", "Rework"}
   end
 
-  test "is idempotent for the same review id across polls" do
+  test "is idempotent for the same signal across polls" do
     setup_memory_tracker([human_pr_review_issue()])
 
     fetch_fun = fn _repo, _branch ->
-      {:ok, %{state: "CHANGES_REQUESTED", review_id: "rev-9"}}
+      {:ok, %{kind: "review", id: "rev-9", author: "alice", timestamp: "2026-05-06T10:00:00Z"}}
     end
 
     state_after_first = PrReviewMonitor.run_once_for_test(%{acted: %{}}, fetch_fun)
@@ -99,16 +111,16 @@ defmodule SymphonyElixir.PrReviewMonitorTest do
     refute_received {:memory_tracker_state_update, "issue-1", _}
   end
 
-  test "re-triggers when a new CHANGES_REQUESTED review id appears" do
+  test "re-triggers when a new signal appears" do
     setup_memory_tracker([human_pr_review_issue()])
 
     state =
-      %{acted: %{"issue-1" => "rev-9"}}
+      %{acted: %{"issue-1" => "review:rev-9"}}
       |> PrReviewMonitor.run_once_for_test(fn _repo, _branch ->
-        {:ok, %{state: "CHANGES_REQUESTED", review_id: "rev-10"}}
+        {:ok, %{kind: "review", id: "rev-10", author: "alice", timestamp: "2026-05-06T10:00:00Z"}}
       end)
 
-    assert state.acted["issue-1"] == "rev-10"
+    assert state.acted["issue-1"] == "review:rev-10"
     assert_received {:memory_tracker_state_update, "issue-1", "Todo"}
   end
 
