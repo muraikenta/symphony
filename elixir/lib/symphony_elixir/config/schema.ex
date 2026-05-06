@@ -54,6 +54,7 @@ defmodule SymphonyElixir.Config.Schema do
       field(:required_labels, {:array, :string}, default: [])
       field(:github_repo, :string)
       field(:human_pr_review_state, :string, default: "Human PR Review")
+      field(:conversational_states, {:array, :string}, default: ["QA"])
       field(:pr_review_changes_requested_target_state, :string, default: "Todo")
       field(:pr_review_polling_interval_ms, :integer, default: 30_000)
       field(:active_states, {:array, :string}, default: ["Todo", "In Progress"])
@@ -75,6 +76,7 @@ defmodule SymphonyElixir.Config.Schema do
           :required_labels,
           :github_repo,
           :human_pr_review_state,
+          :conversational_states,
           :pr_review_changes_requested_target_state,
           :pr_review_polling_interval_ms,
           :active_states,

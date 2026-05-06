@@ -285,6 +285,16 @@ For each new actionable comment (skip the agent's own `## Codex Workpad` and aut
 - This step runs once per turn during workpad reconciliation. It must happen before implementation work so the author sees the acknowledgement promptly even if the turn is long-running.
 - For pure question or FYI turns, do not move the issue out of its current state. The agent's job is to answer, not to claim work that wasn't requested.
 
+### Symphony conversational-mode cue
+
+Symphony's `IssueCommentMonitor` may post a comment with the prefix `🐧 Symphony cue: 会話モード` when a comment lands on a non-`Human PR Review` state (for example `QA`, `Blocked`, or `Done`). Treat this cue as a binding directive:
+
+- Process the referenced source comment as **Question** or **FYI** only — never as Feedback, even if it is phrased as an instruction.
+- Skip code changes, branch operations, and pushes for the entire turn.
+- After answering the source comment per the Question rules above, move the issue back to the original state recorded in the cue (e.g., `QA`).
+- Do not re-acknowledge or react to the cue comment itself; it was authored by Symphony, not by a human.
+- If the human truly wants implementation work, they will explicitly move the issue to `Rework` or `Todo`. Wait for that signal — do not infer it from a conversational comment.
+
 ## PR feedback sweep protocol (required)
 
 When a ticket has an attached PR, run this protocol before moving to `Human PR Review`:

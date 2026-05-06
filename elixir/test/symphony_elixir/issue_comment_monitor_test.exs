@@ -147,6 +147,72 @@ defmodule SymphonyElixir.IssueCommentMonitorTest do
     refute_received {:memory_tracker_state_update, "issue-1", _}
   end
 
+  test "routes a QA-state comment via conversational cue + Todo move" do
+    qa_issue = %Issue{
+      id: "issue-qa",
+      identifier: "GIKAI-700",
+      title: "test",
+      state: "QA",
+      branch_name: "feature/gikai-700",
+      url: "https://linear.app/team/issue/GIKAI-700"
+    }
+
+    setup_memory_tracker([qa_issue], %{
+      "issue-qa" => [
+        comment(%{id: "c-old", updated_at: ~U[2026-05-06 09:00:00Z]}),
+        comment(%{id: "c-question", body: "QA で気になった点、何でこの実装？", updated_at: ~U[2026-05-06 11:00:00Z]})
+      ]
+    })
+
+    initial_state = %{
+      acted: %{},
+      baseline: %{"issue-qa" => %{id: "c-old", updated_at: ~U[2026-05-06 09:00:00Z]}}
+    }
+
+    new_state = IssueCommentMonitor.run_once_for_test(initial_state)
+
+    # cue comment posted before state move
+    assert_received {:memory_tracker_comment, "issue-qa", body}
+    assert body =~ "🐧 Symphony cue: 会話モード"
+    assert body =~ "`QA`"
+
+    # state moved to Todo
+    assert_received {:memory_tracker_state_update, "issue-qa", "Todo"}
+
+    assert new_state.acted["issue-qa"] == "c-question"
+  end
+
+  test "skips Symphony cue comments so they don't re-trigger the monitor" do
+    qa_issue = %Issue{
+      id: "issue-qa",
+      identifier: "GIKAI-700",
+      title: "test",
+      state: "QA",
+      branch_name: "feature/gikai-700",
+      url: "https://linear.app/team/issue/GIKAI-700"
+    }
+
+    setup_memory_tracker([qa_issue], %{
+      "issue-qa" => [
+        comment(%{id: "c-old", updated_at: ~U[2026-05-06 09:00:00Z]}),
+        comment(%{
+          id: "c-cue",
+          body: "🐧 Symphony cue: 会話モード（`QA` から検知）\n\nこの cue 自身を再トリガしないように。",
+          updated_at: ~U[2026-05-06 11:00:00Z]
+        })
+      ]
+    })
+
+    initial_state = %{
+      acted: %{},
+      baseline: %{"issue-qa" => %{id: "c-old", updated_at: ~U[2026-05-06 09:00:00Z]}}
+    }
+
+    _ = IssueCommentMonitor.run_once_for_test(initial_state)
+    refute_received {:memory_tracker_state_update, _, _}
+    refute_received {:memory_tracker_comment, _, _}
+  end
+
   test "honors a custom target state" do
     write_workflow_file!(Workflow.workflow_file_path(),
       tracker_kind: "memory",

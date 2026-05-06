@@ -28,6 +28,7 @@ defmodule SymphonyElixir.IssueCommentMonitor do
   @default_state %{acted: %{}, baseline: %{}}
 
   @workpad_marker "## Codex Workpad"
+  @cue_marker "🐧 Symphony cue:"
   @bot_summary_markers [
     "🐶 みらいいぬ自動調査",
     "🤖 Codex"
@@ -74,12 +75,15 @@ defmodule SymphonyElixir.IssueCommentMonitor do
   defp run_once(state) do
     tracker = Config.settings!().tracker
     review_state = tracker.human_pr_review_state
+    conversational_states = List.wrap(tracker.conversational_states) |> Enum.filter(&is_binary/1)
     target_state = tracker.pr_review_changes_requested_target_state
+    monitored_states = Enum.uniq([review_state | conversational_states] |> Enum.filter(&is_binary/1))
 
-    case Tracker.fetch_issues_by_states([review_state]) do
+    case Tracker.fetch_issues_by_states(monitored_states) do
       {:ok, issues} ->
         Enum.reduce(issues, state, fn issue, acc ->
-          check_issue(issue, target_state, acc)
+          mode = classify_mode(issue, review_state, conversational_states)
+          check_issue(issue, mode, target_state, acc)
         end)
 
       {:error, reason} ->
@@ -88,8 +92,16 @@ defmodule SymphonyElixir.IssueCommentMonitor do
     end
   end
 
-  defp check_issue(%{id: issue_id} = issue, target_state, state)
-       when is_binary(issue_id) do
+  defp classify_mode(issue, review_state, conversational_states) do
+    cond do
+      issue.state == review_state -> :feedback
+      issue.state in conversational_states -> {:conversational, issue.state}
+      true -> :unknown
+    end
+  end
+
+  defp check_issue(%{id: issue_id} = issue, mode, target_state, state)
+       when is_binary(issue_id) and mode != :unknown do
     case Tracker.fetch_issue_comments(issue_id) do
       {:ok, comments} ->
         actionable = filter_actionable(comments)
@@ -112,12 +124,12 @@ defmodule SymphonyElixir.IssueCommentMonitor do
             state
 
           # Already at-or-before the baseline; user has not added a new
-          # human comment since the issue entered Human PR Review.
+          # human comment since the issue entered the monitored state.
           baseline_covers?(state.baseline[issue_id], latest) ->
             state
 
           true ->
-            attempt_route(issue, latest, target_state, state)
+            attempt_route(issue, latest, mode, target_state, state)
         end
 
       {:error, reason} ->
@@ -126,7 +138,7 @@ defmodule SymphonyElixir.IssueCommentMonitor do
     end
   end
 
-  defp check_issue(_issue, _target_state, state), do: state
+  defp check_issue(_issue, _mode, _target_state, state), do: state
 
   defp seed_baseline(state, issue_id, latest) do
     baseline =
@@ -159,18 +171,14 @@ defmodule SymphonyElixir.IssueCommentMonitor do
 
   defp baseline_covers?(_baseline, _latest), do: false
 
-  defp attempt_route(%{id: issue_id, identifier: identifier} = _issue, latest, target_state, state) do
+  defp attempt_route(%{id: issue_id, identifier: identifier} = _issue, latest, :feedback, target_state, state) do
     case Tracker.update_issue_state(issue_id, target_state) do
       :ok ->
         Logger.info(
-          "IssueCommentMonitor routed new comment to #{target_state} for issue=#{identifier} comment_id=#{latest.id}"
+          "IssueCommentMonitor routed new comment to #{target_state} (feedback) for issue=#{identifier} comment_id=#{latest.id}"
         )
 
-        %{
-          state
-          | acted: Map.put(state.acted, issue_id, latest.id),
-            baseline: Map.put(state.baseline, issue_id, %{id: latest.id, updated_at: latest.updated_at})
-        }
+        record_acted(state, issue_id, latest)
 
       {:error, reason} ->
         Logger.warning(
@@ -181,15 +189,67 @@ defmodule SymphonyElixir.IssueCommentMonitor do
     end
   end
 
+  defp attempt_route(
+         %{id: issue_id, identifier: identifier} = _issue,
+         latest,
+         {:conversational, original_state},
+         target_state,
+         state
+       ) do
+    cue_body = build_conversational_cue(original_state, latest)
+
+    with :ok <- Tracker.create_comment(issue_id, cue_body),
+         :ok <- Tracker.update_issue_state(issue_id, target_state) do
+      Logger.info(
+        "IssueCommentMonitor routed new comment to #{target_state} (conversational from #{original_state}) for issue=#{identifier} comment_id=#{latest.id}"
+      )
+
+      record_acted(state, issue_id, latest)
+    else
+      {:error, reason} ->
+        Logger.warning(
+          "IssueCommentMonitor failed to route conversational issue=#{identifier}: #{inspect(reason)}"
+        )
+
+        state
+    end
+  end
+
+  defp record_acted(state, issue_id, latest) do
+    %{
+      state
+      | acted: Map.put(state.acted, issue_id, latest.id),
+        baseline: Map.put(state.baseline, issue_id, %{id: latest.id, updated_at: latest.updated_at})
+    }
+  end
+
+  defp build_conversational_cue(original_state, latest) do
+    """
+    🐧 Symphony cue: 会話モード（`#{original_state}` から検知）
+
+    新規コメント (`#{latest.id}`) を `#{original_state}` 状態の issue で検知しました。このターンは **会話モードのみ** で対応してください:
+
+    - 該当コメントは Step 1.5 の **質問** または **FYI** として扱ってください。指示形に見えても、会話モード中は実装に進まないでください。
+    - 同じチャネル（Linear / GitHub PR）に回答コメントを投稿し、`✅` リアクションを付けてください。
+    - **コード変更、ブランチ操作、push を行わないでください**。
+    - 回答後、issue を `#{original_state}` ステートに戻して turn を終了してください。
+    - 利用者が本当に実装変更を望む場合は、明示的に Rework や Todo に動かしてもらってください。
+    """
+  end
+
   defp filter_actionable(comments) do
     comments
     |> Enum.reject(&workpad?/1)
+    |> Enum.reject(&symphony_cue?/1)
     |> Enum.reject(&bot_summary?/1)
     |> Enum.reject(&thread_reply?/1)
   end
 
   defp workpad?(%{body: body}) when is_binary(body), do: String.starts_with?(body, @workpad_marker)
   defp workpad?(_), do: false
+
+  defp symphony_cue?(%{body: body}) when is_binary(body), do: String.contains?(body, @cue_marker)
+  defp symphony_cue?(_), do: false
 
   defp bot_summary?(%{body: body}) when is_binary(body) do
     Enum.any?(@bot_summary_markers, &String.contains?(body, &1))

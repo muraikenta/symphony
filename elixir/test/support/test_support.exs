@@ -101,6 +101,7 @@ defmodule SymphonyElixir.TestSupport do
           tracker_required_labels: nil,
           tracker_github_repo: nil,
           tracker_human_pr_review_state: nil,
+          tracker_conversational_states: nil,
           tracker_pr_review_changes_requested_target_state: nil,
           tracker_pr_review_polling_interval_ms: nil,
           tracker_active_states: ["Todo", "In Progress"],
@@ -144,6 +145,7 @@ defmodule SymphonyElixir.TestSupport do
     tracker_required_labels = Keyword.get(config, :tracker_required_labels)
     tracker_github_repo = Keyword.get(config, :tracker_github_repo)
     tracker_human_pr_review_state = Keyword.get(config, :tracker_human_pr_review_state)
+    tracker_conversational_states = Keyword.get(config, :tracker_conversational_states)
     tracker_pr_review_changes_requested_target_state =
       Keyword.get(config, :tracker_pr_review_changes_requested_target_state)
     tracker_pr_review_polling_interval_ms = Keyword.get(config, :tracker_pr_review_polling_interval_ms)
@@ -189,6 +191,7 @@ defmodule SymphonyElixir.TestSupport do
         "  required_labels: #{yaml_value(tracker_required_labels)}",
         "  github_repo: #{yaml_value(tracker_github_repo)}",
         "  human_pr_review_state: #{yaml_value(tracker_human_pr_review_state)}",
+        "  conversational_states: #{yaml_value(tracker_conversational_states)}",
         "  pr_review_changes_requested_target_state: #{yaml_value(tracker_pr_review_changes_requested_target_state)}",
         "  pr_review_polling_interval_ms: #{yaml_value(tracker_pr_review_polling_interval_ms)}",
         "  active_states: #{yaml_value(tracker_active_states)}",
