@@ -108,12 +108,14 @@ defmodule SymphonyElixir.IssueCommentMonitor do
         latest = latest_comment(actionable)
 
         cond do
-          # First time we see this issue: record the current latest as the
-          # baseline so we don't trigger on pre-existing feedback we missed
-          # before startup. Also seed acted with the latest so a redo of an
-          # already-handled comment is not re-triggered after restart.
+          # First time we see this issue.
+          # For feedback mode (Human PR Review) we seed the baseline so we
+          # don't immediately re-trigger on history present before startup.
+          # For conversational mode we *do* trigger on first observation —
+          # the human may have left a question while Symphony was down and
+          # they shouldn't have to re-post just because of a restart.
           not Map.has_key?(state.baseline, issue_id) ->
-            seed_baseline(state, issue_id, latest)
+            handle_first_observation(issue, latest, mode, target_state, state)
 
           # No actionable comments at all yet, nothing to do.
           is_nil(latest) ->
@@ -139,6 +141,23 @@ defmodule SymphonyElixir.IssueCommentMonitor do
   end
 
   defp check_issue(_issue, _mode, _target_state, state), do: state
+
+  defp handle_first_observation(_issue, nil, _mode, _target_state, state) do
+    # No actionable comments at all; nothing to do.
+    state
+  end
+
+  defp handle_first_observation(issue, latest, :feedback, _target_state, state) do
+    # Feedback mode: assume the human will use Linear's standard PR-review
+    # feedback flow when they want a code change. Seed baseline silently.
+    seed_baseline(state, issue.id, latest)
+  end
+
+  defp handle_first_observation(issue, latest, mode, target_state, state) do
+    # Conversational mode: trigger on first observation so a question that
+    # arrived while Symphony was down still gets answered after restart.
+    attempt_route(issue, latest, mode, target_state, state)
+  end
 
   defp seed_baseline(state, issue_id, latest) do
     baseline =

@@ -47,7 +47,7 @@ defmodule SymphonyElixir.IssueCommentMonitorTest do
     )
   end
 
-  test "first poll establishes baseline without routing" do
+  test "feedback-mode first poll establishes baseline without routing" do
     setup_memory_tracker([human_pr_review_issue()], %{
       "issue-1" => [comment(%{id: "c-1"})]
     })
@@ -57,6 +57,30 @@ defmodule SymphonyElixir.IssueCommentMonitorTest do
     refute_received {:memory_tracker_state_update, _, _}
     assert state.baseline["issue-1"].id == "c-1"
     assert is_nil(state.acted["issue-1"])
+  end
+
+  test "conversational-mode first poll triggers immediately so restarts don't drop questions" do
+    qa_issue = %Issue{
+      id: "issue-qa",
+      identifier: "GIKAI-700",
+      title: "test",
+      state: "QA",
+      branch_name: "feature/gikai-700",
+      url: "https://linear.app/team/issue/GIKAI-700"
+    }
+
+    setup_memory_tracker([qa_issue], %{
+      "issue-qa" => [
+        comment(%{id: "c-question", body: "残ってた質問", updated_at: ~U[2026-05-06 11:00:00Z]})
+      ]
+    })
+
+    state = IssueCommentMonitor.run_once_for_test(%{acted: %{}, baseline: %{}})
+
+    # No state move (Orchestrator.request_dispatch path) but acted/baseline updated.
+    refute_received {:memory_tracker_state_update, _, _}
+    assert state.acted["issue-qa"] == "c-question"
+    assert state.baseline["issue-qa"].id == "c-question"
   end
 
   test "routes to Todo when a new actionable comment appears after baseline" do
