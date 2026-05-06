@@ -61,20 +61,25 @@ defmodule SymphonyElixir.PrReviewMonitor do
 
     cond do
       not is_binary(tracker.github_repo) or tracker.github_repo == "" ->
+        Logger.debug("PrReviewMonitor tick skipped: github_repo unset")
         state
 
       true ->
         review_state = tracker.human_pr_review_state
         target_state = tracker.pr_review_changes_requested_target_state
 
+        Logger.debug("PrReviewMonitor tick: scanning #{review_state} on #{tracker.github_repo}")
+
         case Tracker.fetch_issues_by_states([review_state]) do
           {:ok, issues} ->
+            Logger.info("PrReviewMonitor tick: #{length(issues)} issues in #{review_state}")
+
             Enum.reduce(issues, state, fn issue, acc ->
               check_issue(issue, tracker.github_repo, target_state, fetch_fun, acc)
             end)
 
           {:error, reason} ->
-            Logger.debug("PrReviewMonitor skip cycle: #{inspect(reason)}")
+            Logger.warning("PrReviewMonitor skip cycle: #{inspect(reason)}")
             state
         end
     end
@@ -82,6 +87,8 @@ defmodule SymphonyElixir.PrReviewMonitor do
 
   defp check_issue(%{branch_name: branch} = issue, repo, target_state, fetch_fun, state)
        when is_binary(branch) and branch != "" do
+    Logger.debug("PrReviewMonitor checking issue=#{issue.identifier} branch=#{branch}")
+
     case fetch_fun.(repo, branch) do
       {:ok, %{kind: kind, id: signal_id} = signal} when is_binary(signal_id) ->
         signal_key = "#{kind}:#{signal_id}"
@@ -107,7 +114,20 @@ defmodule SymphonyElixir.PrReviewMonitor do
           end
         end
 
-      _ ->
+      :no_pr ->
+        Logger.debug("PrReviewMonitor: no open PR found for #{issue.identifier}")
+        state
+
+      :error ->
+        Logger.warning("PrReviewMonitor: gh fetch failed for #{issue.identifier}")
+        state
+
+      :none ->
+        Logger.info("PrReviewMonitor: no actionable signal on PR for #{issue.identifier}")
+        state
+
+      other ->
+        Logger.debug("PrReviewMonitor: skip #{issue.identifier}: #{inspect(other)}")
         state
     end
   end
@@ -143,7 +163,7 @@ defmodule SymphonyElixir.PrReviewMonitor do
       "--state",
       "open",
       "--json",
-      "number,headRefName"
+      "number"
     ]
 
     case System.cmd("gh", args, stderr_to_stdout: true) do
@@ -154,7 +174,8 @@ defmodule SymphonyElixir.PrReviewMonitor do
           _ -> :error
         end
 
-      _ ->
+      {output, exit_code} ->
+        Logger.warning("PrReviewMonitor gh pr list failed exit=#{exit_code} output=#{String.slice(output, 0, 500)}")
         :error
     end
   end

@@ -538,7 +538,7 @@ defmodule SymphonyElixir.Linear.Client do
       description: issue["description"],
       priority: parse_priority(issue["priority"]),
       state: get_in(issue, ["state", "name"]),
-      branch_name: issue["branchName"],
+      branch_name: normalize_unicode(issue["branchName"]),
       url: issue["url"],
       assignee_id: assignee_field(assignee, "id"),
       blocked_by: extract_blockers(issue),
@@ -666,4 +666,16 @@ defmodule SymphonyElixir.Linear.Client do
 
   defp parse_priority(priority) when is_integer(priority), do: priority
   defp parse_priority(_priority), do: nil
+
+  # Linear returns Unicode strings in NFD form for some fields (notably branchName).
+  # Git refs are stored in NFC, so passing the Linear value directly to `git`/`gh`
+  # commands fails to match. Normalize to NFC at the boundary.
+  defp normalize_unicode(value) when is_binary(value) do
+    case String.normalize(value, :nfc) do
+      normalized when is_binary(normalized) -> normalized
+      _ -> value
+    end
+  end
+
+  defp normalize_unicode(value), do: value
 end
