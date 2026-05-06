@@ -231,21 +231,59 @@ Once the human approves by editing the description (if needed) and moving the is
       - resulting `HEAD` short SHA.
 10. Compact context and proceed to execution.
 
-## Step 1.5: Acknowledge incorporated comments
+## Step 1.5: Classify and respond to incorporated comments
 
-Whenever workpad reconciliation picks up a human comment that was not present in the prior turn, leave a single acknowledgement on the source comment so the author can see their input was processed:
+Whenever workpad reconciliation picks up a human comment that was not present in the prior turn, classify it and respond on the source channel so the author can see their input was processed.
 
-- `✅` reaction — the workpad's Plan, Acceptance Criteria, or Validation has been updated to reflect the comment.
-- `👀` reaction — read and considered, but no workpad change yet this turn (e.g., needs more info, deferred to a later turn, judged out of scope).
-- Short threaded reply — when there is nuance the author should know: partial application with reasoning, an explicit deferral with a reason, a follow-up question, or a confirmation request.
+### Classification
 
-Rules:
+For each new actionable comment (skip the agent's own `## Codex Workpad` and automated bot summaries like `みらいいぬ自動調査` / `coderabbitai`), tag it as one of:
+
+- **Question / status request** — the author is asking for information ("now what?", "why X?", "current status?", "where is the test?"). The expected output is an answer, not a code change.
+- **Information / FYI** — the author is sharing context that doesn't require action ("we're shipping tomorrow", "FYI the staging URL changed").
+- **Feedback / instruction** — the author is asking for a behavior change in the code, tests, docs, or process ("rewrite as integration tests", "fix this bug", "follow approach X").
+- **Mixed** — contains both a question and an instruction in the same body.
+
+### Response by classification
+
+**Question / status request**:
+
+1. Compose a concrete, factual answer grounded in the workpad, recent commits (`git log`), PR state (`gh pr view`), test results, or referenced files. Cite specific commit SHAs, file paths with line numbers, or PR check names. No speculation, no vague "I will look into it" — if you don't have the answer, say so explicitly and either look it up before answering or open a follow-up question.
+2. Post the answer on the **same channel** as the question:
+   - Linear comment → reply via Linear MCP `commentCreate` with `parentId` pointing at the question's comment id (or top-level if the host doesn't expose a thread). Do **not** edit the workpad to hold the answer.
+   - GitHub PR top-level comment → `gh pr comment <pr> --body "..."`.
+   - GitHub PR inline review comment → `gh api repos/<owner>/<repo>/pulls/<pr>/comments/<comment_id>/replies -f body=...` to keep the thread intact.
+3. Add a `✅` reaction to the question comment (answered).
+4. Append a one-line entry to the workpad `Notes` ("Answered question on Linear comment <id>: <one-line summary>") so future turns have provenance.
+5. **Do not produce code changes, branch updates, or pushes** purely to address the question. End the turn after answering and leave the issue in its current state (return to `Human PR Review` if a PR is already attached, otherwise the prior state).
+
+**Information / FYI**:
+
+1. Add a `👀` reaction (read and noted).
+2. Append a one-line entry to the workpad `Notes` capturing the information.
+3. No reply, no code change, no state move (return to the prior state).
+
+**Feedback / instruction**:
+
+1. Update the workpad Plan / Acceptance Criteria / Validation to reflect the new direction.
+2. Add a `✅` reaction (incorporated into plan).
+3. Optionally post a short threaded reply when there is nuance the author should know (partial application, explicit deferral with reason, confirmation request).
+4. Proceed with the normal execution / PR feedback sweep flow to land the change.
+
+**Mixed**:
+
+- Answer the question portion via the Question response above (reply + ✅).
+- Apply the feedback portion via the Feedback response above (workpad update + execution).
+- One `✅` reaction is enough — it covers both halves.
+
+### Rules that apply across classifications
 
 - Acknowledge per comment, not per batch. Each new comment that influenced the workpad gets its own reaction or reply.
-- Use whichever Linear tool is available (Linear MCP `mcp__linear__*` reaction/comment mutations preferred; fall back to `linear_graphql` with `commentReactionCreate` or `commentCreate`).
+- Use whichever Linear tool is available (Linear MCP `mcp__linear__*` reaction/comment mutations preferred; fall back to `linear_graphql` with `commentReactionCreate` / `commentCreate`).
 - Do not duplicate. If the agent has already reacted to a comment in a prior turn, skip; if an existing reply already covers the same point, skip.
-- Skip the agent's own `## Codex Workpad` comment and automated bot summaries (e.g., `みらいいぬ自動調査`) — those are not human directives requiring acknowledgement.
+- Skip the agent's own `## Codex Workpad` comment and automated bot summaries — those are not human directives requiring acknowledgement.
 - This step runs once per turn during workpad reconciliation. It must happen before implementation work so the author sees the acknowledgement promptly even if the turn is long-running.
+- For pure question or FYI turns, do not move the issue out of its current state. The agent's job is to answer, not to claim work that wasn't requested.
 
 ## PR feedback sweep protocol (required)
 
