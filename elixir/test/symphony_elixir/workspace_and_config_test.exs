@@ -191,6 +191,45 @@ defmodule SymphonyElixir.WorkspaceAndConfigTest do
     end
   end
 
+  test "after_create hook receives Symphony env vars" do
+    workspace_root =
+      Path.join(
+        System.tmp_dir!(),
+        "symphony-elixir-workspace-hook-env-#{System.unique_integer([:positive])}"
+      )
+
+    try do
+      File.mkdir_p!(workspace_root)
+
+      hook = """
+      printf 'workflow_file=%s\\nworkflow_dir=%s\\nworkspace_dir=%s\\nissue=%s\\n' \
+        "$SYMPHONY_WORKFLOW_FILE" \
+        "$SYMPHONY_WORKFLOW_DIR" \
+        "$SYMPHONY_WORKSPACE_DIR" \
+        "$SYMPHONY_ISSUE_IDENTIFIER" \
+        > hook-env.txt
+      """
+
+      write_workflow_file!(Workflow.workflow_file_path(),
+        workspace_root: workspace_root,
+        hook_after_create: hook
+      )
+
+      assert {:ok, workspace} = Workspace.create_for_issue("MT-HOOK-ENV")
+      contents = File.read!(Path.join(workspace, "hook-env.txt"))
+
+      expected_workflow_file = Path.expand(Workflow.workflow_file_path())
+      expected_workflow_dir = Path.dirname(expected_workflow_file)
+
+      assert contents =~ "workflow_file=#{expected_workflow_file}\n"
+      assert contents =~ "workflow_dir=#{expected_workflow_dir}\n"
+      assert contents =~ "workspace_dir=#{workspace}\n"
+      assert contents =~ "issue=MT-HOOK-ENV\n"
+    after
+      File.rm_rf(workspace_root)
+    end
+  end
+
   test "workspace surfaces after_create hook failures" do
     workspace_root =
       Path.join(

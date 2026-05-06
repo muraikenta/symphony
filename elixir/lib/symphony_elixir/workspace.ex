@@ -296,9 +296,11 @@ defmodule SymphonyElixir.Workspace do
 
     Logger.info("Running workspace hook hook=#{hook_name} #{issue_log_context(issue_context)} workspace=#{workspace} worker_host=local")
 
+    hook_env = build_hook_env(workspace, issue_context)
+
     task =
       Task.async(fn ->
-        System.cmd("sh", ["-lc", command], cd: workspace, stderr_to_stdout: true)
+        System.cmd("sh", ["-lc", command], cd: workspace, env: hook_env, stderr_to_stdout: true)
       end)
 
     case Task.yield(task, timeout_ms) do
@@ -319,7 +321,10 @@ defmodule SymphonyElixir.Workspace do
 
     Logger.info("Running workspace hook hook=#{hook_name} #{issue_log_context(issue_context)} workspace=#{workspace} worker_host=#{worker_host}")
 
-    case run_remote_command(worker_host, "cd #{shell_escape(workspace)} && #{command}", timeout_ms) do
+    hook_env = build_hook_env(workspace, issue_context)
+    env_prelude = remote_env_prelude(hook_env)
+
+    case run_remote_command(worker_host, "#{env_prelude}cd #{shell_escape(workspace)} && #{command}", timeout_ms) do
       {:ok, cmd_result} ->
         handle_hook_command_result(cmd_result, workspace, issue_context, hook_name)
 
@@ -329,6 +334,34 @@ defmodule SymphonyElixir.Workspace do
       {:error, reason} ->
         {:error, reason}
     end
+  end
+
+  defp build_hook_env(workspace, issue_context) do
+    workflow_file = SymphonyElixir.Workflow.workflow_file_path()
+
+    base = [
+      {"SYMPHONY_WORKSPACE_DIR", workspace},
+      {"SYMPHONY_ISSUE_IDENTIFIER", to_string(issue_context.issue_identifier || "")}
+    ]
+
+    case workflow_file do
+      file when is_binary(file) and file != "" ->
+        expanded = Path.expand(file)
+
+        [
+          {"SYMPHONY_WORKFLOW_FILE", expanded},
+          {"SYMPHONY_WORKFLOW_DIR", Path.dirname(expanded)} | base
+        ]
+
+      _ ->
+        base
+    end
+  end
+
+  defp remote_env_prelude(env) do
+    env
+    |> Enum.map_join(" ", fn {key, value} -> "#{key}=#{shell_escape(value)}" end)
+    |> Kernel.<>(" ")
   end
 
   defp handle_hook_command_result({_output, 0}, _workspace, _issue_id, _hook_name) do

@@ -24,6 +24,12 @@
 - description 編集禁止ルールに spec フェーズの例外を明記
 - **Step 1.5「Acknowledge incorporated comments」**: workpad 整合時に新規取り込んだ人間コメントへリアクション（✅ 反映済み／👀 検討中／🤔 適用しない判断）または短い返信を残す。エージェントが読んだことを Linear UI 上で確認できるように
 - **Symphony 自身への改善要望は GitHub Issue として `muraikenta/symphony` に起票**: ワークフロー / オーケストレーター / プロンプト の不備や改善点を発見したエージェントは `gh issue create --repo muraikenta/symphony` で起票（重複は事前検索でスキップ）。製品 Linear に紛れさせず、symphony 自体の課題管理を分離。issue URL は workpad Notes に追記
+- **ワークスペースフックに Symphony 環境変数を露出**: `after_create` / `before_remove` の `sh -lc` 実行時、以下の env vars を自動セット
+  - `SYMPHONY_WORKFLOW_FILE` — workflow ファイルの絶対パス
+  - `SYMPHONY_WORKFLOW_DIR` — `dirname` 結果（リポジトリ内の固定相対位置を起点にできる）
+  - `SYMPHONY_WORKSPACE_DIR` — 現在のワークスペース絶対パス
+  - `SYMPHONY_ISSUE_IDENTIFIER` — Linear チケット識別子
+  - 用途例: 個人ローカルパスをハードコードせず、`"$SYMPHONY_WORKFLOW_DIR/.."` から secrets ファイル（`.env` 等）をコピーする after_create フック。SSH worker 経由でも同じ env vars が prelude として転送される
 
 ## ステート遷移
 
