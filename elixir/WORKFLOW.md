@@ -212,6 +212,7 @@ Once the human approves by editing the description (if needed) and moving the is
     - Check off items that are already done.
     - Expand/fix the plan so it is comprehensive for current scope.
     - Ensure `Acceptance Criteria` and `Validation` are current and still make sense for the task.
+    - Then run Step 1.5 (acknowledge incorporated comments) before any implementation work, so the human sees the reaction/reply promptly.
 4.  Start work by writing/updating a hierarchical plan in the workpad comment.
 5.  Ensure the workpad includes a compact environment stamp at the top as a code fence line:
     - Format: `<host>:<abs-workdir>@<short-sha>`
@@ -229,6 +230,22 @@ Once the human approves by editing the description (if needed) and moving the is
       - result (`clean` or `conflicts resolved`),
       - resulting `HEAD` short SHA.
 10. Compact context and proceed to execution.
+
+## Step 1.5: Acknowledge incorporated comments
+
+Whenever workpad reconciliation picks up a human comment that was not present in the prior turn, leave a single acknowledgement on the source comment so the author can see their input was processed:
+
+- `✅` reaction — the workpad's Plan, Acceptance Criteria, or Validation has been updated to reflect the comment.
+- `👀` reaction — read and considered, but no workpad change yet this turn (e.g., needs more info, deferred to a later turn, judged out of scope).
+- Short threaded reply — when there is nuance the author should know: partial application with reasoning, an explicit deferral with a reason, a follow-up question, or a confirmation request.
+
+Rules:
+
+- Acknowledge per comment, not per batch. Each new comment that influenced the workpad gets its own reaction or reply.
+- Use whichever Linear tool is available (Linear MCP `mcp__linear__*` reaction/comment mutations preferred; fall back to `linear_graphql` with `commentReactionCreate` or `commentCreate`).
+- Do not duplicate. If the agent has already reacted to a comment in a prior turn, skip; if an existing reply already covers the same point, skip.
+- Skip the agent's own `## Codex Workpad` comment and automated bot summaries (e.g., `みらいいぬ自動調査`) — those are not human directives requiring acknowledgement.
+- This step runs once per turn during workpad reconciliation. It must happen before implementation work so the author sees the acknowledgement promptly even if the turn is long-running.
 
 ## PR feedback sweep protocol (required)
 

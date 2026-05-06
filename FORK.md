@@ -22,6 +22,7 @@
   - 十分 → 既存通り `In Progress` で実装開始
 - 人間が `Human Spec Review` で承認 → `Todo` に戻す → 次回ポーリングで実装が始まる
 - description 編集禁止ルールに spec フェーズの例外を明記
+- **Step 1.5「Acknowledge incorporated comments」**: workpad 整合時に新規取り込んだ人間コメントへリアクション（✅ 反映済み／👀 検討中／🤔 適用しない判断）または短い返信を残す。エージェントが読んだことを Linear UI 上で確認できるように
 
 ## ステート遷移
 
