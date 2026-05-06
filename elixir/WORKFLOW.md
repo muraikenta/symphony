@@ -14,6 +14,7 @@ tracker:
     - Cancelled
     - Canceled
     - Duplicate
+    - QA
     - Done
 polling:
   interval_ms: 5000
@@ -115,6 +116,7 @@ The agent should be able to talk to Linear, either via a configured Linear MCP s
 - `Human PR Review` -> PR is attached and validated; waiting on human approval.
 - `Merging` -> approved by human; execute the `land` skill flow (do not call `gh pr merge` directly).
 - `Rework` -> reviewer requested changes; planning + implementation required.
+- `QA` -> terminal state for the agent; PR has merged and the ticket is awaiting human/QA verification. Do not modify.
 - `Done` -> terminal state; no further action required.
 
 ## Step 0: Determine current ticket state and route
@@ -131,6 +133,7 @@ The agent should be able to talk to Linear, either via a configured Linear MCP s
    - `Human PR Review` -> wait and poll for decision/review updates.
    - `Merging` -> on entry, open and follow `.codex/skills/land/SKILL.md`; do not call `gh pr merge` directly.
    - `Rework` -> run rework flow.
+   - `QA` -> do nothing and shut down (terminal for the agent).
    - `Done` -> do nothing and shut down.
 4. Check whether a PR already exists for the current branch and whether it is closed.
    - If a branch PR exists and is `CLOSED` or `MERGED`, treat prior branch work as non-reusable for this run.
@@ -304,7 +307,7 @@ Use this only when completion is blocked by missing required tools or missing au
 3. If review feedback requires changes, move the issue to `Rework` and follow the rework flow.
 4. If approved, human moves the issue to `Merging`.
 5. When the issue is in `Merging`, open and follow `.codex/skills/land/SKILL.md`, then run the `land` skill in a loop until the PR is merged. Do not call `gh pr merge` directly.
-6. After merge is complete, move the issue to `Done`.
+6. After merge is complete, move the issue to `QA`. The QA team takes it from there and is responsible for moving it to `Done` once verified.
 
 ## Step 4: Rework handling
 
@@ -344,7 +347,7 @@ Use this only when completion is blocked by missing required tools or missing au
   current issue.
 - Do not move to `Human PR Review` unless the `Completion bar before Human PR Review` is satisfied.
 - In `Human PR Review`, do not make changes; wait and poll.
-- If state is terminal (`Done`), do nothing and shut down.
+- If state is terminal (`QA`, `Done`, or any other configured terminal state), do nothing and shut down.
 - Keep issue text concise, specific, and reviewer-oriented.
 - If blocked and no workpad exists yet, add one blocker comment describing blocker, impact, and next unblock action.
 
