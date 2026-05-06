@@ -265,17 +265,26 @@ defmodule SymphonyElixir.Linear.Client do
   end
 
   defp scope_filter(tracker) do
-    cond do
-      is_binary(tracker.team_key) and tracker.team_key != "" ->
-        %{"team" => %{"key" => %{"eq" => tracker.team_key}}}
+    base =
+      cond do
+        is_binary(tracker.team_key) and tracker.team_key != "" ->
+          %{"team" => %{"key" => %{"eq" => tracker.team_key}}}
 
-      is_binary(tracker.project_slug) and tracker.project_slug != "" ->
-        %{"project" => %{"slugId" => %{"eq" => tracker.project_slug}}}
+        is_binary(tracker.project_slug) and tracker.project_slug != "" ->
+          %{"project" => %{"slugId" => %{"eq" => tracker.project_slug}}}
 
-      true ->
-        nil
-    end
+        true ->
+          nil
+      end
+
+    if base, do: with_labels_filter(base, tracker), else: nil
   end
+
+  defp with_labels_filter(filter, %{required_labels: labels}) when is_list(labels) and labels != [] do
+    Map.put(filter, "labels", %{"name" => %{"in" => labels}})
+  end
+
+  defp with_labels_filter(filter, _tracker), do: filter
 
   defp prepend_page_issues(issues, acc_issues) when is_list(issues) and is_list(acc_issues) do
     Enum.reverse(issues, acc_issues)

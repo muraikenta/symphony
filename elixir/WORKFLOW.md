@@ -2,6 +2,8 @@
 tracker:
   kind: linear
   team_key: "GIKAI"
+  required_labels:
+    - "ai-task"
   active_states:
     - Todo
     - In Progress
