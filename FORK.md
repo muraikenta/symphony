@@ -23,6 +23,7 @@
 - 人間が `Human Spec Review` で承認 → `Todo` に戻す → 次回ポーリングで実装が始まる
 - description 編集禁止ルールに spec フェーズの例外を明記
 - **Step 1.5「Acknowledge incorporated comments」**: workpad 整合時に新規取り込んだ人間コメントへリアクション（✅ 反映済み／👀 検討中／🤔 適用しない判断）または短い返信を残す。エージェントが読んだことを Linear UI 上で確認できるように
+- **Symphony 自身への改善要望は GitHub Issue として `muraikenta/symphony` に起票**: ワークフロー / オーケストレーター / プロンプト の不備や改善点を発見したエージェントは `gh issue create --repo muraikenta/symphony` で起票（重複は事前検索でスキップ）。製品 Linear に紛れさせず、symphony 自体の課題管理を分離。issue URL は workpad Notes に追記
 
 ## ステート遷移
 

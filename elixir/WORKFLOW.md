@@ -276,6 +276,29 @@ Use this only when completion is blocked by missing required tools or missing au
 - Keep the brief concise and action-oriented; do not add extra top-level comments outside the workpad.
 - Do not route environmental blockers to `Human PR Review`; that state is reserved for human approval of an attached PR.
 
+## Filing Symphony / workflow improvement requests
+
+When you discover a gap, ambiguity, bug, or missing rule in Symphony itself or in this WORKFLOW.md — i.e., a meta-issue about *how the agent is supposed to operate*, not about the current ticket's product code — file it as a GitHub issue on the Symphony repo so it accumulates in one place across all future runs and does not pollute the product tracker.
+
+Trigger examples:
+
+- A workflow rule produced confusion or a wrong routing decision.
+- A required state, label, or hook is missing.
+- An orchestrator bug or limit (sandbox, polling, retry, dashboard) blocked or slowed the run.
+- The prompt template lacks coverage for a recurring scenario.
+
+Mechanics:
+
+- Repo: `muraikenta/symphony`.
+- Tool: `gh issue create --repo muraikenta/symphony --title "<title>" --body "<body>"`. Fall back to `gh api repos/muraikenta/symphony/issues -f title=... -f body=...` only if the higher-level command is unavailable.
+- Before filing, search for duplicates: `gh issue list --repo muraikenta/symphony --state open --search "<keywords>"`. Skip if an open issue already covers the same point.
+- Title: short and action-oriented. Examples: "Spec sufficiency check should account for empty description with rich comments", "Workspace creation fails when target repo's AGENTS.md mandates `git worktree`".
+- Body: concise. Include three sections — **Context** (which Linear ticket surfaced this; the Linear URL is enough, do not paste workpad dumps), **What went wrong / what is missing** (one short paragraph), **Suggested change** (only when obvious; name file/section; skip if speculative).
+- Do not include secrets, full prompts, or PII.
+- After filing, append the issue URL to the workpad `Notes` so the human can find it later.
+
+This is distinct from filing product follow-up Linear issues — those still go to Linear in the same project. This rule covers only Symphony itself.
+
 ## Step 2: Execution phase (Todo -> In Progress -> Human PR Review)
 
 1.  Determine current repo state (`branch`, `git status`, `HEAD`) and verify the kickoff `pull` sync result is already recorded in the workpad before implementation continues.
