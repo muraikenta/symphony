@@ -274,7 +274,7 @@ defmodule SymphonyElixir.Orchestrator do
           "Orchestrator accepting external dispatch for #{issue_context(issue)} state=#{issue.state || "?"}"
         )
 
-        new_state = do_dispatch_issue(state, issue, nil, nil)
+        new_state = do_dispatch_issue(state, issue, nil, nil, conversational?: true)
         notify_dashboard()
         {:noreply, new_state}
     end
@@ -404,7 +404,15 @@ defmodule SymphonyElixir.Orchestrator do
   end
 
   defp reconcile_issue_state(%Issue{} = issue, state, active_states, terminal_states) do
+    running_entry = Map.get(state.running, issue.id)
+    conversational? = is_map(running_entry) and Map.get(running_entry, :conversational?, false)
+
     cond do
+      conversational? ->
+        # Externally-dispatched conversational agents are intentionally
+        # running on a non-active or terminal state. Don't kill them.
+        refresh_running_issue_state(state, issue)
+
       terminal_issue_state?(issue.state, terminal_states) ->
         Logger.info("Issue moved to terminal state: #{issue_context(issue)} state=#{issue.state}; stopping active agent")
 
@@ -736,7 +744,7 @@ defmodule SymphonyElixir.Orchestrator do
     end
   end
 
-  defp do_dispatch_issue(%State{} = state, issue, attempt, preferred_worker_host) do
+  defp do_dispatch_issue(%State{} = state, issue, attempt, preferred_worker_host, opts \\ []) do
     recipient = self()
 
     case select_worker_host(state, preferred_worker_host) do
@@ -745,18 +753,18 @@ defmodule SymphonyElixir.Orchestrator do
         state
 
       worker_host ->
-        spawn_issue_on_worker_host(state, issue, attempt, recipient, worker_host)
+        spawn_issue_on_worker_host(state, issue, attempt, recipient, worker_host, opts)
     end
   end
 
-  defp spawn_issue_on_worker_host(%State{} = state, issue, attempt, recipient, worker_host) do
+  defp spawn_issue_on_worker_host(%State{} = state, issue, attempt, recipient, worker_host, opts) do
     case Task.Supervisor.start_child(SymphonyElixir.TaskSupervisor, fn ->
            AgentRunner.run(issue, recipient, attempt: attempt, worker_host: worker_host)
          end) do
       {:ok, pid} ->
         ref = Process.monitor(pid)
 
-        Logger.info("Dispatching issue to agent: #{issue_context(issue)} pid=#{inspect(pid)} attempt=#{inspect(attempt)} worker_host=#{worker_host || "local"}")
+        Logger.info("Dispatching issue to agent: #{issue_context(issue)} pid=#{inspect(pid)} attempt=#{inspect(attempt)} worker_host=#{worker_host || "local"} conversational?=#{inspect(Keyword.get(opts, :conversational?, false))}")
 
         running =
           Map.put(state.running, issue.id, %{
@@ -779,6 +787,7 @@ defmodule SymphonyElixir.Orchestrator do
             codex_last_reported_total_tokens: 0,
             turn_count: 0,
             retry_attempt: normalize_retry_attempt(attempt),
+            conversational?: Keyword.get(opts, :conversational?, false),
             started_at: DateTime.utc_now()
           })
 
