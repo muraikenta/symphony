@@ -103,6 +103,68 @@ defmodule SymphonyElixir.Linear.Client do
   }
   """
 
+  @issue_comments_query """
+  query SymphonyLinearIssueComments($issueId: String!, $first: Int!) {
+    issue(id: $issueId) {
+      comments(first: $first) {
+        nodes {
+          id
+          body
+          createdAt
+          updatedAt
+          parent {
+            id
+          }
+          user {
+            id
+            name
+          }
+        }
+      }
+    }
+  }
+  """
+
+  @comment_page_size 100
+
+  @spec fetch_issue_comments(String.t()) :: {:ok, [map()]} | {:error, term()}
+  def fetch_issue_comments(issue_id) when is_binary(issue_id) do
+    case Config.settings!().tracker.api_key do
+      nil ->
+        {:error, :missing_linear_api_token}
+
+      _ ->
+        with {:ok, body} <-
+               graphql(@issue_comments_query, %{
+                 issueId: issue_id,
+                 first: @comment_page_size
+               }) do
+          decode_issue_comments(body)
+        end
+    end
+  end
+
+  defp decode_issue_comments(%{"data" => %{"issue" => %{"comments" => %{"nodes" => nodes}}}})
+       when is_list(nodes) do
+    {:ok, Enum.map(nodes, &normalize_comment/1)}
+  end
+
+  defp decode_issue_comments(%{"data" => %{"issue" => nil}}), do: {:ok, []}
+  defp decode_issue_comments(%{"errors" => errors}), do: {:error, {:linear_graphql_errors, errors}}
+  defp decode_issue_comments(_), do: {:error, :linear_unknown_payload}
+
+  defp normalize_comment(node) when is_map(node) do
+    %{
+      id: node["id"],
+      body: node["body"] || "",
+      created_at: parse_datetime(node["createdAt"]),
+      updated_at: parse_datetime(node["updatedAt"]),
+      parent_id: get_in(node, ["parent", "id"]),
+      author_id: get_in(node, ["user", "id"]),
+      author_name: get_in(node, ["user", "name"])
+    }
+  end
+
   @spec fetch_candidate_issues() :: {:ok, [Issue.t()]} | {:error, term()}
   def fetch_candidate_issues do
     tracker = Config.settings!().tracker

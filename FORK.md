@@ -31,6 +31,7 @@
   - `SYMPHONY_ISSUE_IDENTIFIER` — Linear チケット識別子
   - 用途例: 個人ローカルパスをハードコードせず、`"$SYMPHONY_WORKFLOW_DIR/.."` から secrets ファイル（`.env` 等）をコピーする after_create フック。SSH worker 経由でも同じ env vars が prelude として転送される
 - **PR `Request changes` を受けたら自動で Todo に戻す PrReviewMonitor**: `tracker.github_repo` が設定されている場合、専用 GenServer が定期的（デフォルト 30 秒）に `Human PR Review` ステートのチケットを走査し、`gh pr view` で `reviewDecision == CHANGES_REQUESTED` を確認。新しい CHANGES_REQUESTED review が見つかったらチケットを `Todo`（`tracker.pr_review_changes_requested_target_state` で変更可）に自動遷移し、Symphony の通常フローで PR フィードバックスイープが起動する。重複アクションは review id の in-memory map で抑止
+- **新しい Linear コメントを検知して自動で Todo に戻す IssueCommentMonitor**: 自分で作成した PR には `Request changes` できないので（GitHub の制約）、補完として Linear の issue コメントもポーリング。`Human PR Review` 中の issue に新規コメントが付くと `Todo` に自動遷移。Codex Workpad コメント、bot サマリー（`🐶 みらいいぬ自動調査` 等）、スレッド返信は対象外。issue 初回観測時はその時点の最新コメントをベースラインとして記録し、以降に追加された人間コメントだけがトリガー
 
 ## ステート遷移
 

@@ -29,6 +29,7 @@ defmodule SymphonyElixir.Application do
       SymphonyElixir.WorkflowStore,
       SymphonyElixir.Orchestrator,
       SymphonyElixir.PrReviewMonitor,
+      SymphonyElixir.IssueCommentMonitor,
       SymphonyElixir.HttpServer,
       SymphonyElixir.StatusDashboard
     ]

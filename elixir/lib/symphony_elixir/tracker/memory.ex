@@ -47,8 +47,17 @@ defmodule SymphonyElixir.Tracker.Memory do
     :ok
   end
 
+  @spec fetch_issue_comments(String.t()) :: {:ok, [map()]} | {:error, term()}
+  def fetch_issue_comments(issue_id) when is_binary(issue_id) do
+    {:ok, Map.get(configured_comments(), issue_id, [])}
+  end
+
   defp configured_issues do
     Application.get_env(:symphony_elixir, :memory_tracker_issues, [])
+  end
+
+  defp configured_comments do
+    Application.get_env(:symphony_elixir, :memory_tracker_comments, %{})
   end
 
   defp issue_entries do
