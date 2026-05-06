@@ -241,18 +241,8 @@ For each new actionable comment (skip the agent's own `## Codex Workpad` and aut
 
 - **Question / status request** — the author is asking for information ("now what?", "why X?", "current status?", "where is the test?"). The expected output is an answer, not a code change.
 - **Information / FYI** — the author is sharing context that doesn't require action ("we're shipping tomorrow", "FYI the staging URL changed").
-- **Feedback / instruction** — the author is asking for a behavior change in the code, tests, docs, or process. **The comment must contain a clear directive** ("X してください", "X してほしい", "X に書き直して", "X を直して", "X してほしいです", explicit imperative phrasing in English/Japanese). Bare observations, hypotheticals, or questions phrased in instruction-shaped language ("X したらどう？", "X するのもアリかも") are NOT instructions.
-- **Mixed** — contains both a question and an explicit instruction in the same body.
-
-### Default conservative bias
-
-When uncertain whether a comment contains an explicit instruction, **default to treating it as a question** and answer it without producing code changes. Reasons:
-
-- Speculation about what the human "probably wants" leads to unsolicited rework that wastes turns and disrupts review threads.
-- It is cheap and respectful for the human to come back with an explicit ask if they really want a behavior change.
-- A question turn ends in a few minutes and a few thousand tokens; a misclassified rework can burn millions of tokens and produce noise commits.
-
-Concretely: if the comment is ambiguous, choose **Question**. In your reply, ask explicitly whether the author wants a code/test/doc change, and what change. Only on a follow-up comment with a clear directive do you proceed to the Feedback path.
+- **Feedback / instruction** — the author is asking for a behavior change in the code, tests, docs, or process ("rewrite as integration tests", "fix this bug", "follow approach X").
+- **Mixed** — contains both a question and an instruction in the same body.
 
 ### Response by classification
 
@@ -403,15 +393,24 @@ This is distinct from filing product follow-up Linear issues — those still go 
 
 ## Step 4: Rework handling
 
-1. Treat `Rework` as a full approach reset, not incremental patching.
-2. Re-read the full issue body and all human comments; explicitly identify what will be done differently this attempt.
-3. Close the existing PR tied to the issue.
-4. Remove the existing `## Codex Workpad` comment from the issue.
-5. Create a fresh branch from `origin/main`.
-6. Start over from the normal kickoff flow:
-   - If current issue state is `Todo`, move it to `In Progress`; otherwise keep the current state.
-   - Create a new bootstrap `## Codex Workpad` comment.
-   - Build a fresh plan/checklist and execute end-to-end.
+**Default behavior: incremental fix on the existing PR.** `Rework` means the reviewer wants changes to the current attempt, not a fresh restart. Reuse the existing branch, the existing PR, and the existing `## Codex Workpad`; layer the requested changes on top.
+
+1. Re-read the full issue body, the workpad, the existing PR (commits, top-level/inline comments, review summaries), and all human comments. Identify the specific changes the reviewer asked for.
+2. Move the issue to `In Progress` if not already there. Do **not** close the existing PR. Do **not** delete the workpad. Do **not** create a new branch.
+3. Update the workpad's Plan / Acceptance Criteria / Validation in place to reflect the rework scope. Mark already-addressed items as resolved; add new items for the rework feedback.
+4. Implement the requested changes on the existing branch. Commit incrementally with messages that reference the feedback (e.g., "fix: address review comment about X").
+5. Run validation, push, and re-run the PR feedback sweep protocol until no actionable comments remain.
+6. Move back to `Human PR Review` with the existing PR updated.
+
+**Full reset (opt-in, rare).** Only when the reviewer explicitly requests a different approach, or the existing branch is unrecoverable (closed/merged PR, irreparable history, fundamentally wrong direction), do the following instead:
+
+1. State in the workpad why a full reset is justified, citing the reviewer comment or branch state.
+2. Close the existing PR with a comment pointing to the new branch.
+3. Remove the existing `## Codex Workpad` comment from the issue.
+4. Create a fresh branch from `origin/main`.
+5. Run the normal kickoff flow: create a new workpad, build a fresh plan, execute end-to-end.
+
+When in doubt, default to the incremental path. Reviewers expect their feedback applied to the PR they reviewed, not in a brand-new PR.
 
 ## Completion bar before Human PR Review
 
