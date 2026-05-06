@@ -303,14 +303,33 @@ Do **not** add the marker to the workpad (`## Codex Workpad` is already self-ide
 
 ### Conversational mode (non-`Human PR Review` states)
 
-When the agent is dispatched on an issue whose current state is in the configured `tracker.conversational_states` set (default `["QA"]`, project workflows commonly add `"Blocked"` and `"Done"`), this is a **conversational turn** triggered by a fresh human comment on either Linear or the linked GitHub PR — never a request for code work:
+When the agent is dispatched on an issue whose current state is in the configured `tracker.conversational_states` set (default `["QA"]`, project workflows commonly add `"Blocked"` and `"Done"`), this is a turn triggered by a fresh human comment on either Linear or the linked GitHub PR — **not** a request for new feature/bug-fix code work.
 
-- Process every actionable new comment (since the prior turn's acknowledgement) as **Question** or **FYI** only, regardless of phrasing. Imperative-shaped sentences in this mode are still answered, not implemented.
-- Skip code changes, branch operations, and pushes for the entire turn.
-- Answer on the same channel the comment came in on (Linear ↦ Linear reply, GitHub PR ↦ `gh pr comment` / `gh api .../comments/<id>/replies`).
-- Add `✅` to each addressed comment.
-- **Do not change the issue state.** Leave it where it was (e.g., `QA`). The orchestrator will not retry this issue; the next conversational turn happens when a fresh comment arrives.
-- If the human truly wants implementation work, they will explicitly move the issue to `Rework` or `Todo`. Wait for that signal — never infer it from a conversational comment.
+The hard rule that applies in **every** conversational state:
+
+- **Never make code changes, never create new commits, never modify branches, never `git push`.** The merged PR body must not be re-pushed. If a comment looks like it's asking for a code change, treat it as a question (answer with what would need to happen, do not act).
+- Leave the issue in its current state — the orchestrator will not retry, the next turn fires only when a fresh comment arrives.
+- If the human truly wants implementation work, they move the issue to `Rework` or `Todo`. Never infer that move from a conversational comment.
+
+Within that hard rule, what the agent **may** do depends on which conversational state it landed on:
+
+**`QA` (post-merge verification)** — the agent is allowed to perform QA-style validation work when the human asks for it. This includes:
+
+- Checking out / running the merged branch, starting a dev server (`pnpm dev` etc.), exercising the feature.
+- Taking screenshots / recordings of the running app via skills like `pr-screenshot`.
+- Uploading QA artifacts (screenshots, videos) to R2 / configured artifact stores.
+- Editing the PR body / description on the merged PR to attach QA results, screenshots, or a QA summary section.
+- Posting QA reports as Linear comments or GitHub PR comments.
+- Read-only inspection of any file, log, or runtime state.
+
+These are explicitly **not** prohibited by the hard rule above — they don't change the merged code, don't push commits, and don't move the issue. If the comment asks for a QA action of this kind ("`pr-screenshot` で撮ってきて", "ローカルで動作確認して結果書いて"), do it.
+
+**`Blocked` / `Done` / other configured conversational states** — read-only Q&A only. No dev server, no artifact upload, no PR body edits unless the human explicitly directed the action and the state semantics allow it. When in doubt, ask the human in a reply rather than acting.
+
+For all conversational states, classify each new actionable comment per the Question / FYI / Feedback rules above, but with two adjustments:
+
+- A "Feedback / instruction" comment that requests a permitted QA action (screenshot, server start, etc.) is still actionable — perform the action and report results. A "Feedback / instruction" comment that requests a code change is **not** actionable — answer with the equivalent of a Question response (what would need to change, what the human should do to trigger the rework path).
+- The 👀 reaction is already on the source comment (added by the monitor). Don't add another reaction; focus on the substantive reply or QA artifact instead.
 
 ## PR feedback sweep protocol (required)
 
