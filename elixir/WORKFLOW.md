@@ -241,8 +241,18 @@ For each new actionable comment (skip the agent's own `## Codex Workpad` and aut
 
 - **Question / status request** — the author is asking for information ("now what?", "why X?", "current status?", "where is the test?"). The expected output is an answer, not a code change.
 - **Information / FYI** — the author is sharing context that doesn't require action ("we're shipping tomorrow", "FYI the staging URL changed").
-- **Feedback / instruction** — the author is asking for a behavior change in the code, tests, docs, or process ("rewrite as integration tests", "fix this bug", "follow approach X").
-- **Mixed** — contains both a question and an instruction in the same body.
+- **Feedback / instruction** — the author is asking for a behavior change in the code, tests, docs, or process. **The comment must contain a clear directive** ("X してください", "X してほしい", "X に書き直して", "X を直して", "X してほしいです", explicit imperative phrasing in English/Japanese). Bare observations, hypotheticals, or questions phrased in instruction-shaped language ("X したらどう？", "X するのもアリかも") are NOT instructions.
+- **Mixed** — contains both a question and an explicit instruction in the same body.
+
+### Default conservative bias
+
+When uncertain whether a comment contains an explicit instruction, **default to treating it as a question** and answer it without producing code changes. Reasons:
+
+- Speculation about what the human "probably wants" leads to unsolicited rework that wastes turns and disrupts review threads.
+- It is cheap and respectful for the human to come back with an explicit ask if they really want a behavior change.
+- A question turn ends in a few minutes and a few thousand tokens; a misclassified rework can burn millions of tokens and produce noise commits.
+
+Concretely: if the comment is ambiguous, choose **Question**. In your reply, ask explicitly whether the author wants a code/test/doc change, and what change. Only on a follow-up comment with a clear directive do you proceed to the Feedback path.
 
 ### Response by classification
 
