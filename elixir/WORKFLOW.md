@@ -276,6 +276,22 @@ For each new actionable comment (skip the agent's own `## Codex Workpad` and aut
 - Apply the feedback portion via the Feedback response above (workpad update + execution).
 - One `✅` reaction is enough — it covers both halves.
 
+### Identifying agent-authored replies
+
+Linear and GitHub will post agent replies under whichever human account owns the API token / `gh auth login`, so the human reading the thread cannot tell at a glance that a comment came from Codex rather than from themselves. To remove that ambiguity, **every comment, reply, or thread post the agent authors must start with the following marker on its own line**:
+
+```
+> 🤖 Codex (Symphony) からの返信
+```
+
+(The blockquote keeps it visually distinct from the body and from human-authored comments.) After the marker, leave a blank line and then the substantive answer. This applies to:
+
+- Linear top-level comments and threaded replies posted by the agent.
+- GitHub PR top-level comments (`gh pr comment`).
+- GitHub PR inline review-comment replies (`gh api .../pulls/<n>/comments/<id>/replies`).
+
+Do **not** add the marker to the workpad (`## Codex Workpad` is already self-identifying), to reactions, or to any push-back / status-update copy that runs through the normal commit messages or PR descriptions. The marker is for human-readable replies only.
+
 ### Rules that apply across classifications
 
 - Acknowledge per comment, not per batch. Each new comment that influenced the workpad gets its own reaction or reply.
