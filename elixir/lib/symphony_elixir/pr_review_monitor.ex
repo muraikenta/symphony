@@ -32,7 +32,7 @@ defmodule SymphonyElixir.PrReviewMonitor do
   def handle_info(:check, state) do
     new_state =
       try do
-        run_once(state, &fetch_pr_review_decision/2)
+        run_once(state, &fetch_pr_review_decision/3)
       rescue
         error ->
           Logger.warning("PrReviewMonitor poll crashed: #{Exception.message(error)}")
